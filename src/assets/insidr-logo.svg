@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" fill="none" aria-hidden="true">
+  <defs>
+    <linearGradient id="insidr-gold" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#f5b84a"/>
+      <stop offset="100%" stop-color="#d4900a"/>
+    </linearGradient>
+    <linearGradient id="insidr-purple" x1="100%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#9d5cff"/>
+      <stop offset="100%" stop-color="#7b2fff"/>
+    </linearGradient>
+    <linearGradient id="insidr-ring" x1="0%" y1="50%" x2="100%" y2="50%">
+      <stop offset="0%" stop-color="#d4900a" stop-opacity="0.9"/>
+      <stop offset="50%" stop-color="#a855f7"/>
+      <stop offset="100%" stop-color="#7b2fff" stop-opacity="0.9"/>
+    </linearGradient>
+  </defs>
+  <rect x="2" y="2" width="44" height="44" rx="12" fill="#12121a" stroke="url(#insidr-ring)" stroke-width="1.5"/>
+  <!-- Bull (left, gold) -->
+  <path d="M14 32c0-6 2.5-11 6-14.5 1.2-1 2.8-1.5 4.5-1.5 1.2 0 2.3.3 3.2.8-2.2 2.5-3.5 6-3.5 10.2 0 2.2.5 4.2 1.4 6H14z" fill="url(#insidr-gold)" opacity="0.95"/>
+  <path d="M22 16.5c1.5-.8 3.2-1 4.8-.6 2.8.7 5 3 5.8 5.8.3 1 .4 2 .2 3-1.8-1.5-4-2.4-6.4-2.4-1.6 0-3.1.4-4.4 1.2z" fill="url(#insidr-gold)"/>
+  <!-- Bear (right, purple) -->
+  <path d="M34 32c0-6-2.5-11-6-14.5-1.2-1-2.8-1.5-4.5-1.5-1.2 0-2.3.3-3.2.8 2.2 2.5 3.5 6 3.5 10.2 0 2.2-.5 4.2-1.4 6H34z" fill="url(#insidr-purple)" opacity="0.95"/>
+  <path d="M26 16.5c-1.5-.8-3.2-1-4.8-.6-2.8.7-5 3-5.8 5.8-.3 1-.4 2-.2 3 1.8-1.5 4-2.4 6.4-2.4 1.6 0 3.1.4 4.4 1.2z" fill="url(#insidr-purple)"/>
+  <!-- Center pulse -->
+  <circle cx="24" cy="24" r="2.5" fill="#ffffff" opacity="0.9"/>
+  <circle cx="24" cy="24" r="5" stroke="url(#insidr-ring)" stroke-width="0.75" fill="none" opacity="0.5"/>
+</svg>
