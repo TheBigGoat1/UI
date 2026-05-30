@@ -1,0 +1,670 @@
+/**
+ * Insidr dashboard — institutional command center UI
+ */
+
+.dash-shell {
+  --dash-sidebar-w: 260px;
+  --dash-sidebar-collapsed: 72px;
+  --dash-topbar-h: 64px;
+  --dash-glow-gold: rgba(34, 211, 238, 0.1);
+  --dash-glow-violet: rgba(34, 211, 238, 0.06);
+  --dash-panel-bg: rgba(14, 14, 22, 0.72);
+  --dash-panel-border: rgba(255, 255, 255, 0.08);
+  --dash-stat-bg: rgba(16, 16, 26, 0.9);
+}
+
+.dash-shell {
+  @apply relative flex h-screen w-full overflow-hidden text-text-main;
+  background: var(--flow-base);
+}
+
+.dash-shell__ambient {
+  @apply pointer-events-none absolute inset-0 z-0;
+  background:
+    radial-gradient(ellipse 55% 40% at 0% 0%, var(--dash-glow-violet), transparent 55%),
+    radial-gradient(ellipse 50% 35% at 100% 10%, var(--dash-glow-gold), transparent 50%),
+    var(--flow-base);
+}
+
+.dash-sidebar {
+  @apply relative z-20 hidden md:flex flex-col shrink-0 border-r transition-all duration-500 ease-smooth;
+  border-color: var(--border-faint);
+  background: var(--overlay-sidebar);
+  backdrop-filter: blur(20px);
+  box-shadow: 4px 0 32px rgba(0, 0, 0, 0.15);
+}
+
+.dash-sidebar--collapsed {
+  width: var(--dash-sidebar-collapsed);
+}
+
+.dash-sidebar:not(.dash-sidebar--collapsed) {
+  width: var(--dash-sidebar-w);
+}
+
+.dash-sidebar__head {
+  @apply flex h-[72px] items-center border-b shrink-0 px-4;
+  border-color: var(--border-faint);
+}
+
+.dash-sidebar__nav {
+  @apply flex-1 overflow-y-auto py-4 px-3 flex flex-col gap-1 custom-scrollbar;
+}
+
+.dash-sidebar__foot {
+  @apply border-t p-3 space-y-2 shrink-0;
+  border-color: var(--border-faint);
+}
+
+.dash-main {
+  @apply relative z-10 flex min-w-0 flex-1 flex-col overflow-hidden;
+}
+
+.dash-topbar {
+  @apply hidden md:flex h-[var(--dash-topbar-h)] shrink-0 items-center justify-between gap-4 border-b px-6 lg:px-8;
+  border-color: var(--border-faint);
+  background: var(--overlay-chrome);
+  backdrop-filter: blur(16px);
+}
+
+.dash-topbar__title {
+  @apply font-heading text-lg tracking-wide text-text-main;
+}
+
+.dash-topbar__meta {
+  @apply text-xs font-bold uppercase tracking-wider text-text-muted;
+}
+
+.dash-topbar__actions {
+  @apply flex items-center gap-2 sm:gap-3;
+}
+
+.dash-status-pill {
+  @apply inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider;
+  border-color: var(--border-faint);
+  background: var(--dash-panel-bg);
+}
+
+.dash-status-pill--live {
+  @apply border-success/30 text-success;
+}
+
+.dash-status-pill--live::before {
+  content: '';
+  @apply h-1.5 w-1.5 rounded-full bg-success animate-pulse;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.8);
+}
+
+.dash-content {
+  @apply flex-1 overflow-y-auto custom-scrollbar p-4 lg:p-8 pb-24 md:pb-8;
+}
+
+.dash-page {
+  @apply space-y-6 lg:space-y-8 animate-fade-in;
+}
+
+.dash-page-header {
+  @apply flex flex-col gap-4 md:flex-row md:items-start md:justify-between pb-2;
+}
+
+.dash-page-header__icon {
+  @apply flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border text-primary;
+  border-color: rgba(212, 144, 10, 0.25);
+  background: linear-gradient(135deg, rgba(212, 144, 10, 0.12), rgba(123, 47, 255, 0.08));
+  box-shadow: 0 0 24px rgba(212, 144, 10, 0.08);
+}
+
+.dash-page-header__title {
+  @apply text-2xl md:text-3xl font-heading tracking-wide text-text-main leading-tight;
+}
+
+.dash-page-header__desc {
+  @apply text-sm md:text-base text-text-muted max-w-2xl leading-relaxed mt-1;
+}
+
+.dash-stat-grid {
+  @apply grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4;
+}
+
+.dash-stat {
+  @apply relative overflow-hidden rounded-2xl border p-5 transition-all duration-400 ease-smooth;
+  background: var(--dash-stat-bg);
+  border-color: var(--dash-panel-border);
+  box-shadow: var(--shadow-card);
+}
+
+.dash-stat::before {
+  content: '';
+  @apply absolute top-0 left-0 right-0 h-px opacity-70 pointer-events-none;
+  background: linear-gradient(90deg, transparent, var(--flow-line), transparent);
+}
+
+.dash-stat:hover {
+  @apply -translate-y-0.5;
+  border-color: rgba(212, 144, 10, 0.3);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.dash-stat__label {
+  @apply text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted mb-2 flex items-center gap-2;
+}
+
+.dash-stat__value {
+  @apply font-heading text-2xl md:text-3xl tracking-wide text-text-main;
+}
+
+.dash-stat__sub {
+  @apply text-xs text-text-muted mt-2 font-medium;
+}
+
+.dash-panel {
+  @apply rounded-2xl border overflow-visible transition-all duration-400;
+  background: var(--dash-panel-bg);
+  border-color: var(--dash-panel-border);
+  box-shadow: var(--shadow-card);
+  backdrop-filter: blur(12px);
+}
+
+.dash-panel__head {
+  @apply flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4 md:px-6;
+  border-color: var(--border-faint);
+}
+
+.dash-panel__title {
+  @apply font-display font-bold text-base text-text-main flex items-center gap-2;
+}
+
+.dash-panel__body {
+  @apply p-5 md:p-6 overflow-hidden rounded-2xl;
+}
+
+.dash-ticker-rail {
+  @apply relative overflow-hidden rounded-xl border h-12 flex items-center;
+  border-color: var(--dash-panel-border);
+  background: var(--dash-panel-bg);
+}
+
+.dash-ticker-rail__fade-l,
+.dash-ticker-rail__fade-r {
+  @apply absolute top-0 bottom-0 w-10 z-10 pointer-events-none;
+}
+
+.dash-ticker-rail__fade-l {
+  left: 0;
+  background: linear-gradient(to right, var(--dash-panel-bg), transparent);
+}
+
+.dash-ticker-rail__fade-r {
+  right: 0;
+  background: linear-gradient(to left, var(--dash-panel-bg), transparent);
+}
+
+.dash-asset-chip {
+  @apply flex shrink-0 items-center gap-3 border-r px-5 py-2 transition-all duration-300;
+  border-color: var(--border-faint);
+}
+
+.dash-asset-chip:hover,
+.dash-asset-chip--active {
+  background: rgba(212, 144, 10, 0.1);
+}
+
+.dash-asset-chip--active {
+  @apply border-b-2 border-b-primary text-primary;
+  box-shadow: inset 0 -1px 0 rgba(212, 144, 10, 0.2);
+}
+
+.dash-price-card {
+  @apply dash-panel p-4 cursor-pointer transition-all duration-400;
+}
+
+.dash-price-card:hover {
+  transform: translateY(-3px);
+  border-color: rgba(212, 144, 10, 0.28);
+  box-shadow: var(--shadow-card-hover);
+}
+
+.dash-price-card--active {
+  @apply ring-1 ring-primary/35 border-primary/40;
+}
+
+.dash-price-card--active::before {
+  content: '';
+  @apply absolute left-0 top-0 bottom-0 w-1 bg-primary rounded-l-2xl;
+}
+
+.dash-assets-section {
+  @apply w-full;
+}
+
+.dash-assets-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+  gap: 0.75rem;
+}
+
+.dash-assets-grid--majors {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+@media (min-width: 640px) {
+  .dash-assets-grid--majors {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 1024px) {
+  .dash-assets-grid--majors {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .dash-assets-grid {
+    grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+    gap: 1rem;
+  }
+}
+
+.dash-assets-group-label {
+  @apply text-[10px] font-bold uppercase tracking-[0.2em] text-text-muted mb-3 pl-1;
+  border-left: 2px solid rgba(34, 211, 238, 0.5);
+  padding-left: 0.5rem;
+}
+
+.dash-assets-all {
+  @apply rounded-xl border p-4 md:p-5;
+  border-color: var(--dash-panel-border);
+  background: rgba(8, 8, 14, 0.35);
+}
+
+.dash-price-card--loading {
+  @apply min-h-[92px] flex flex-col justify-center;
+}
+
+.dash-journal-chart {
+  position: relative;
+  width: 100%;
+  min-height: 320px;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-faint);
+  background: rgba(6, 8, 14, 0.9);
+  overflow: hidden;
+}
+
+.dash-equity-chart {
+  @apply h-56 rounded-xl border border-border bg-background/40 p-4 flex items-end gap-1;
+}
+
+.dash-filter-pill {
+  @apply px-3 py-1.5 rounded-lg border border-border bg-background text-xs font-bold text-text-muted transition-all;
+}
+
+.dash-filter-pill:hover {
+  @apply text-text-main border-primary/30;
+}
+
+.dash-filter-pill--active {
+  @apply bg-primary/15 border-primary/40 text-primary;
+}
+
+/* Form controls — visible dropdowns on dark + light themes */
+.dash-field {
+  @apply flex flex-col gap-1.5 min-w-0;
+}
+
+.dash-field__label {
+  @apply text-[10px] font-bold uppercase tracking-wider text-text-muted;
+}
+
+.dash-field__hint {
+  @apply text-[11px] text-text-muted leading-snug;
+}
+
+.dash-select-wrap {
+  @apply relative flex items-center w-full;
+}
+
+.dash-select {
+  @apply w-full appearance-none cursor-pointer rounded-xl border py-2.5 pl-3 pr-10 text-sm font-semibold outline-none transition-all;
+  color: var(--text-main, #f1f5f9);
+  background-color: var(--background, #0b1220);
+  border-color: var(--border, rgba(255, 255, 255, 0.14));
+  color-scheme: dark;
+}
+
+.dash-select:hover:not(:disabled) {
+  border-color: rgba(34, 211, 238, 0.45);
+  background-color: rgba(15, 23, 42, 0.95);
+}
+
+.dash-select:focus {
+  @apply ring-2 ring-primary/35 border-primary/50;
+}
+
+.dash-select:disabled {
+  @apply opacity-50 cursor-not-allowed;
+}
+
+.dash-select__chevron {
+  @apply absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none text-primary opacity-90;
+}
+
+.dash-select option,
+.dash-select optgroup {
+  background-color: #0f172a;
+  color: #f8fafc;
+  font-weight: 600;
+  padding: 8px 12px;
+}
+
+[data-theme='light'] .dash-select {
+  color-scheme: light;
+  background-color: #ffffff;
+  color: #0f172a;
+  border-color: rgba(15, 23, 42, 0.15);
+}
+
+[data-theme='light'] .dash-select option,
+[data-theme='light'] .dash-select optgroup {
+  background-color: #ffffff;
+  color: #0f172a;
+}
+
+.dash-input {
+  @apply w-full rounded-xl border py-2.5 px-3 text-sm font-medium outline-none transition-all;
+  color: var(--text-main, #f1f5f9);
+  background-color: var(--background, #0b1220);
+  border-color: var(--border, rgba(255, 255, 255, 0.14));
+}
+
+.dash-input:focus {
+  @apply ring-2 ring-primary/35 border-primary/50;
+}
+
+.dash-settings-tabs {
+  @apply flex flex-wrap gap-2 p-1.5 rounded-xl border bg-background/40;
+  border-color: var(--dash-panel-border);
+}
+
+.dash-settings-tab {
+  @apply px-4 py-2 rounded-lg text-sm font-bold text-text-muted transition-all;
+}
+
+.dash-settings-tab:hover {
+  @apply text-text-main bg-surface-hover;
+}
+
+.dash-settings-tab--active {
+  @apply bg-primary/15 text-primary border border-primary/30 shadow-sm;
+}
+
+.dash-overview-grid {
+  display: grid;
+  gap: 1.5rem;
+}
+
+/* Analysis + chart split — chart column fills remaining width and height */
+.dash-market-layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  width: 100%;
+  min-height: clamp(480px, 62vh, 780px);
+  align-items: stretch;
+}
+
+@media (min-width: 900px) {
+  .dash-market-layout {
+    grid-template-columns: minmax(260px, 28%) minmax(0, 1fr);
+    min-height: clamp(520px, 68vh, 820px);
+  }
+}
+
+@media (min-width: 1280px) {
+  .dash-market-layout {
+    grid-template-columns: minmax(280px, 26%) minmax(0, 1fr);
+  }
+}
+
+.dash-market-analysis {
+  @apply flex flex-col shrink-0;
+  border-color: var(--border-faint);
+  background: rgba(8, 8, 14, 0.4);
+  border-bottom: 1px solid var(--border-faint);
+  max-height: 52vh;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+/* Multi-timeframe analysis panel */
+.tf-structure {
+  background: linear-gradient(145deg, rgba(8, 12, 22, 0.95), rgba(12, 18, 32, 0.85));
+  transition: border-color 0.35s ease, box-shadow 0.35s ease;
+}
+
+.tf-structure--aligned {
+  border-color: rgba(16, 185, 129, 0.45);
+  box-shadow: 0 0 24px rgba(16, 185, 129, 0.12);
+}
+
+.tf-structure--conflict {
+  border-color: rgba(245, 158, 11, 0.5);
+  box-shadow: 0 0 28px rgba(245, 158, 11, 0.15);
+  background: linear-gradient(
+    135deg,
+    rgba(239, 68, 68, 0.06) 0%,
+    rgba(8, 12, 22, 0.95) 45%,
+    rgba(16, 185, 129, 0.06) 100%
+  );
+}
+
+.tf-structure--mixed {
+  border-color: rgba(34, 211, 238, 0.25);
+}
+
+.tf-trend-pill {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 0.5rem;
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid var(--border-faint);
+}
+
+.tf-trend-pill__tag {
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted, #a1a1aa);
+}
+
+.tf-trend-pill__sub {
+  font-size: 10px;
+  font-family: ui-monospace, monospace;
+  color: rgba(34, 211, 238, 0.85);
+}
+
+.tf-trend-pill__value {
+  font-size: 13px;
+  font-weight: 800;
+  font-family: ui-monospace, monospace;
+  letter-spacing: 0.04em;
+}
+
+.tf-structure__vs {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 0.5rem;
+}
+
+.tf-structure__vs span {
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.tf-align-badge {
+  font-size: 9px;
+  font-weight: 800;
+  text-transform: uppercase;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  letter-spacing: 0.04em;
+}
+
+.tf-align-badge--aligned {
+  color: #34d399;
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+}
+
+.tf-align-badge--conflicting {
+  color: #fbbf24;
+  background: rgba(245, 158, 11, 0.12);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  animation: tf-pulse 2s ease-in-out infinite;
+}
+
+.tf-align-badge--mixed {
+  color: #a1a1aa;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--border-faint);
+}
+
+@keyframes tf-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.65;
+  }
+}
+
+@media (min-width: 900px) {
+  .dash-market-analysis {
+    max-height: none;
+    height: 100%;
+    border-bottom: none;
+    border-right: 1px solid var(--border-faint);
+  }
+}
+
+.dash-market-chart {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  width: 100%;
+  min-height: 0;
+  height: 100%;
+  flex: 1;
+}
+
+.dash-chart-zone {
+  position: relative;
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: clamp(420px, 52vh, 680px);
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: 0.75rem;
+  border: 1px solid var(--border-faint);
+  background: rgba(6, 8, 14, 0.9);
+  overflow: hidden;
+}
+
+.trade-chart-shell {
+  width: 100%;
+}
+
+.trade-chart-shell--fill {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.trade-chart-shell--fill .trade-chart-shell__chart,
+.trade-chart-shell--fill .tradingview-chart-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100% !important;
+}
+
+.trade-chart-mount {
+  width: 100% !important;
+  height: 100%;
+  min-height: 360px;
+  display: block;
+}
+
+.trade-chart-mount--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 360px;
+}
+
+.dash-live-quote {
+  @apply flex flex-wrap items-end justify-between gap-3 mb-3 px-1;
+}
+
+.dash-live-quote__price {
+  @apply font-mono text-2xl md:text-3xl font-bold text-text-main tracking-tight;
+}
+
+.dash-live-quote__change {
+  @apply text-sm font-bold font-mono px-2 py-0.5 rounded;
+}
+
+.dash-live-quote__change--up {
+  @apply text-emerald-400 bg-emerald-500/15;
+}
+
+.dash-live-quote__change--down {
+  @apply text-red-400 bg-red-500/15;
+}
+
+.dash-live-quote__badge {
+  @apply text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border;
+}
+
+.dash-live-quote__badge--live {
+  @apply border-emerald-500/40 text-emerald-500;
+}
+
+.dash-live-quote__badge--model {
+  @apply border-amber-500/40 text-amber-400;
+}
+
+.dash-tv-disclaimer {
+  @apply text-[10px] text-amber-300/90 mb-3 border border-amber-500/25 rounded-lg px-3 py-2 bg-amber-500/5 leading-relaxed;
+}
+
+.dash-empty-banner {
+  @apply rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-200/90 flex flex-wrap items-center justify-between gap-3;
+}
+
+[data-theme='light'] .dash-chart-zone {
+  background: rgba(248, 247, 244, 0.8);
+}
+
+.dash-mobile-bar {
+  @apply md:hidden fixed bottom-0 left-0 right-0 z-50 px-2;
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom, 0px));
+}
+
+.dash-mobile-bar__inner {
+  @apply flex h-16 items-center justify-between rounded-2xl border mx-1 mb-2 px-1;
+  border-color: var(--dash-panel-border);
+  background: var(--overlay-chrome);
+  backdrop-filter: blur(20px);
+  box-shadow: var(--shadow-nav);
+}

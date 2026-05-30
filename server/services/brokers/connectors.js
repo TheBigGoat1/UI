@@ -1,0 +1,68 @@
+function normalizeTrade(row, exchange) {
+  return {
+    symbol: String(row.symbol || "").toUpperCase(),
+    side: String(row.side || "long").toLowerCase() === "short" ? "short" : "long",
+    pnl: Number(row.pnl || 0),
+    strategy: row.strategy || "Imported",
+    emotion: row.emotion || null,
+    mistakes: Array.isArray(row.mistakes) ? row.mistakes : [],
+    status: row.status || (Number(row.pnl || 0) >= 0 ? "WIN" : "LOSS"),
+    exchange,
+    opened_at: row.opened_at || new Date().toISOString(),
+  };
+}
+
+async function binanceConnector() {
+  return [];
+}
+
+async function coinbaseConnector() {
+  return [];
+}
+
+async function ibkrConnector() {
+  return [];
+}
+
+async function mt4Connector() {
+  return [];
+}
+
+async function mt5Connector() {
+  return [];
+}
+
+export function parseCsvTrades(csvText, exchange = "csv") {
+  const lines = String(csvText || "").split(/\r?\n/).filter(Boolean);
+  if (lines.length < 2) return [];
+  const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
+  return lines.slice(1).map((line) => {
+    const cols = line.split(",");
+    const row = {};
+    headers.forEach((h, i) => {
+      row[h] = cols[i]?.trim();
+    });
+    return normalizeTrade(row, exchange);
+  });
+}
+
+export async function fetchBrokerTrades(exchangeId) {
+  switch (exchangeId) {
+    case "binance":
+      return binanceConnector();
+    case "coinbase":
+      return coinbaseConnector();
+    case "ibkr":
+      return ibkrConnector();
+    case "mt4":
+      return mt4Connector();
+    case "mt5":
+      return mt5Connector();
+    default:
+      return [];
+  }
+}
+
+export function toTradeInsert(trade, exchange) {
+  return normalizeTrade(trade, exchange);
+}

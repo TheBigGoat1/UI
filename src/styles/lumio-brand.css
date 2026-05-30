@@ -1,0 +1,110 @@
+/**
+ * Insidr — global tokens (navy + cyan). Landing layout lives in landing.css
+ */
+
+:root {
+  --bg-deep: #050a14;
+  --bg-base: #0b1220;
+  --bg-raised: #111827;
+  --bg-panel: rgba(15, 23, 42, 0.72);
+  --accent: #22d3ee;
+  --accent-strong: #00e5ff;
+  --accent-muted: rgba(34, 211, 238, 0.14);
+  --accent-glow: rgba(34, 211, 238, 0.35);
+  --text-primary: #f8fafc;
+  --text-secondary: #94a3b8;
+  --text-tertiary: #64748b;
+  --border-subtle: rgba(148, 163, 184, 0.12);
+  --border-accent: rgba(34, 211, 238, 0.28);
+
+  --color-primary: var(--accent);
+  --color-secondary: var(--accent);
+  --color-background: var(--bg-base);
+  --color-surface: var(--bg-raised);
+  --color-surface-hover: #1a2332;
+  --color-surface-elevated: #151d2e;
+  --color-border: var(--border-subtle);
+  --color-border-glow: var(--border-accent);
+  --color-text-main: var(--text-primary);
+  --color-text-muted: var(--text-secondary);
+
+  --rgb-background: 11 18 32;
+  --rgb-surface: 17 24 39;
+  --rgb-surface-hover: 26 35 50;
+  --rgb-text-main: 248 250 252;
+  --rgb-text-muted: 148 163 184;
+  --rgb-border: 30 41 59;
+
+  --flow-base: var(--bg-deep);
+  --flow-deep: var(--bg-deep);
+  --flow-panel: var(--bg-base);
+  --flow-raised: var(--bg-raised);
+  --flow-line: var(--border-subtle);
+  --flow-main-gradient: linear-gradient(180deg, var(--bg-deep) 0%, var(--bg-base) 100%);
+
+  --overlay-chrome: rgba(5, 10, 20, 0.92);
+  --overlay-glass: rgba(11, 18, 32, 0.88);
+  --overlay-card: rgba(17, 24, 39, 0.65);
+  --shadow-nav: 0 4px 30px rgba(0, 0, 0, 0.45);
+  --shadow-card: 0 8px 40px rgba(0, 0, 0, 0.35);
+  --shadow-glow-primary: 0 0 32px var(--accent-glow);
+
+  --font-display: 'Inter', system-ui, sans-serif;
+  --font-body: 'Inter', system-ui, sans-serif;
+
+  --primary-rgb: 34 211 238;
+  --secondary-rgb: 34 211 238;
+}
+
+html {
+  font-family: var(--font-body);
+  background: var(--bg-deep);
+  color: var(--text-primary);
+}
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  -webkit-font-smoothing: antialiased;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+/* Nav chrome — full rules in landing.css */
+
+.btn-primary {
+  background: var(--accent) !important;
+  color: var(--bg-deep) !important;
+  font-weight: 600 !important;
+  border: none !important;
+  border-radius: 8px !important;
+}
+
+.btn-primary:hover {
+  filter: brightness(1.06);
+}
+
+.btn-ghost {
+  border-color: var(--border-subtle) !important;
+  color: var(--text-primary) !important;
+}
+
+.btn-ghost:hover {
+  border-color: var(--border-accent) !important;
+  background: var(--accent-muted) !important;
+}
+
+.nav-link {
+  color: var(--text-secondary) !important;
+  font-weight: 500;
+}
+
+.nav-link:hover {
+  color: var(--text-primary) !important;
+}

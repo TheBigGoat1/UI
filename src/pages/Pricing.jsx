@@ -1,0 +1,374 @@
+import React, { useEffect, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { Check, Zap, Crown, Loader2, Sparkles, AlertTriangle, CreditCard } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
+import { api } from '../services/api/api';
+import PageHeader from '../components/layout/PageHeader';
+
+const PRO_FEATURES = [
+  'Live AI trade ideas',
+  'Macro sentiment & news',
+  'Strategy backtest lab',
+  'Web journal & analytics',
+  'Economic calendar',
+];
+
+const ELITE_FEATURES = [
+  'Everything in Pro',
+  'Priority idea generation',
+  'API & webhooks (roadmap)',
+  'Priority support',
+];
+
+const FREE_FEATURES = [
+  'Overview & live prices',
+  'Ideas (limited)',
+  'Journal (manual entries)',
+  'Calendar & news browse',
+];
+
+const Pricing = () => {
+  const { user, refreshUser } = useAuth();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [billingCycle, setBillingCycle] = useState('annual');
+  const [loadingPlan, setLoadingPlan] = useState(null);
+  const [checkoutError, setCheckoutError] = useState('');
+  const [checkoutNotice, setCheckoutNotice] = useState('');
+
+  const isDev = import.meta.env.DEV;
+
+  useEffect(() => {
+    const sessionId = searchParams.get('session_id');
+    if (searchParams.get('checkout') !== 'success' && !sessionId) return;
+
+    (async () => {
+      setCheckoutNotice('Confirming your subscription…');
+      try {
+        if (sessionId) {
+          const res = await api.billing.verifySession(sessionId);
+          if (res?.success) {
+            await refreshUser();
+            setCheckoutNotice('Trial activated — welcome to Insidr!');
+            setSearchParams({}, { replace: true });
+          } else {
+            setCheckoutError(res?.error || 'Could not verify checkout.');
+          }
+        } else {
+          await refreshUser();
+          setCheckoutNotice('Subscription updated.');
+          setSearchParams({}, { replace: true });
+        }
+      } catch (err) {
+        setCheckoutError(err.error || 'Checkout verification failed.');
+      }
+    })();
+  }, [searchParams, refreshUser, setSearchParams]);
+
+  const startCheckout = async (plan) => {
+    setLoadingPlan(plan);
+    setCheckoutError('');
+    setCheckoutNotice('');
+    try {
+      const res = await api.billing.createCheckout({
+        plan,
+        billingCycle,
+        context: 'upgrade',
+      });
+      if (res?.data?.url) {
+        window.location.href = res.data.url;
+      } else {
+        setCheckoutError(
+          res?.error ||
+            'Could not start checkout. Set STRIPE_SECRET_KEY and business name in Stripe dashboard.',
+        );
+      }
+    } catch (err) {
+      setCheckoutError(err.error || 'Checkout failed.');
+    } finally {
+      setLoadingPlan(null);
+    }
+  };
+
+  const startDevTrial = async (plan) => {
+    setLoadingPlan(`dev-${plan}`);
+    setCheckoutError('');
+    try {
+      const res = await api.billing.startDevTrial({ plan, billingCycle });
+      if (res?.success) {
+        await refreshUser();
+        setCheckoutNotice(
+          `${plan === 'elite' ? 'Elite' : 'Pro'} trial started — ${res.data?.access?.message || '7 days free'}`,
+        );
+      } else {
+        setCheckoutError(res?.error || 'Dev trial failed.');
+      }
+    } catch (err) {
+      setCheckoutError(err.error || 'Dev trial failed.');
+    } finally {
+      setLoadingPlan(null);
+    }
+  };
+
+  const openPortal = async () => {
+    try {
+      const res = await api.billing.portal();
+      if (res?.data?.url) window.location.href = res.data.url;
+      else setCheckoutError(res?.error || 'Billing portal unavailable.');
+    } catch (err) {
+      setCheckoutError(err.error || 'Billing portal unavailable.');
+    }
+  };
+
+  const tier = user?.tier || 'free';
+  const isPro = tier === 'pro' || tier === 'elite';
+  const isElite = tier === 'elite';
+  const isFree = !isPro;
+  const isTrialing = user?.subscription_status === 'trialing';
+
+  return (
+    <div className="dash-page max-w-6xl mx-auto pb-12">
+      <PageHeader
+        icon={Zap}
+        title="Plans & pricing"
+        description="7-day free trial — card required, no charge until trial ends. Billing starts automatically after day 7."
+      />
+
+      <div className="mb-6 p-4 rounded-xl border border-primary/25 bg-primary/5 flex gap-3 text-sm">
+        <CreditCard size={20} className="text-primary shrink-0 mt-0.5" />
+        <div className="text-text-muted leading-relaxed">
+          <p className="font-bold text-text-main mb-1">How billing works</p>
+          <ul className="list-disc list-inside space-y-1 text-xs">
+            <li>Days 1–7: full access, $0 charged</li>
+            <li>After trial: Stripe charges your card automatically</li>
+            <li>If payment fails: access ends and you are signed out until you subscribe</li>
+            <li>Users can pay with normal personal cards (no business account needed)</li>
+          </ul>
+        </div>
+      </div>
+      <p className="text-xs text-text-muted -mt-3 mb-4">
+        Legal: <Link to="/legal/terms">Terms</Link> · <Link to="/legal/privacy">Privacy</Link> ·{' '}
+        <Link to="/legal/cookies">Cookies</Link> · <Link to="/legal/risk">Risk Disclosure</Link>
+      </p>
+
+      {checkoutNotice && (
+        <div className="mb-4 p-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 text-sm text-emerald-300">
+          {checkoutNotice}
+        </div>
+      )}
+
+      {checkoutError && (
+        <div className="mb-4 p-4 rounded-xl border border-red-500/30 bg-red-500/10 text-sm flex gap-3">
+          <AlertTriangle size={18} className="text-red-400 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold text-red-200 mb-1">Checkout could not start</p>
+            <p className="text-red-200/80 text-xs leading-relaxed whitespace-pre-wrap">{checkoutError}</p>
+            <p className="text-xs text-text-muted mt-2">
+              Platform setup fix (owner only): open{' '}
+              <a
+                href="https://dashboard.stripe.com/test/settings/business-details"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline"
+              >
+                Business details
+              </a>{' '}
+              and set a public business name, or add{' '}
+              <code className="px-1 bg-black/30 rounded">STRIPE_BUSINESS_NAME=Insidr</code> to .env
+              and restart the API. End users can still checkout with regular personal cards.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {user?.subscription_status && user.subscription_status !== 'none' && (
+        <div className="mb-6 p-4 rounded-xl border border-border bg-surface flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-wider text-text-muted">Current plan</p>
+            <p className="text-lg font-bold capitalize">
+              {tier} · {user.subscription_status}
+              {isTrialing && user.trial_ends_at && (
+                <span className="text-sm font-normal text-text-muted ml-2">
+                  trial ends {new Date(user.trial_ends_at).toLocaleDateString()}
+                </span>
+              )}
+            </p>
+          </div>
+          <button type="button" onClick={openPortal} className="btn-ghost text-sm px-4 py-2">
+            Manage payment method
+          </button>
+        </div>
+      )}
+
+      <div className="flex justify-center mb-8">
+        <div className="bg-surface border border-border p-1 rounded-xl inline-flex shadow-sm">
+          <button
+            type="button"
+            onClick={() => setBillingCycle('monthly')}
+            className={`px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${
+              billingCycle === 'monthly'
+                ? 'bg-primary text-bg-deep shadow'
+                : 'text-text-muted hover:text-text-main'
+            }`}
+          >
+            Monthly
+          </button>
+          <button
+            type="button"
+            onClick={() => setBillingCycle('annual')}
+            className={`px-6 py-2.5 rounded-lg text-sm font-bold transition-all ${
+              billingCycle === 'annual'
+                ? 'bg-primary text-bg-deep shadow'
+                : 'text-text-muted hover:text-text-main'
+            }`}
+          >
+            Annual
+            <span className="ml-1.5 text-[10px] font-bold uppercase opacity-90">Save ~17%</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="grid lg:grid-cols-3 gap-6 items-stretch">
+        <div
+          className={`bg-surface border rounded-2xl p-6 flex flex-col ${
+            isFree ? 'border-primary ring-1 ring-primary/30' : 'border-border'
+          }`}
+        >
+          {isFree && (
+            <span className="text-[10px] font-bold uppercase tracking-wider text-primary mb-2">
+              Your plan
+            </span>
+          )}
+          <div className="flex items-center gap-2 mb-1">
+            <Sparkles size={18} className="text-text-muted" />
+            <h2 className="text-xl font-bold">Free</h2>
+          </div>
+          <p className="text-3xl font-bold mb-1">
+            $0
+            <span className="text-sm font-normal text-text-muted"> / forever</span>
+          </p>
+          <p className="text-xs text-text-muted mb-5">Explore the platform with core tools.</p>
+          <ul className="space-y-2.5 mb-6 flex-1 text-sm text-text-muted">
+            {FREE_FEATURES.map((f) => (
+              <li key={f} className="flex gap-2">
+                <Check size={16} className="text-text-muted shrink-0 mt-0.5" />
+                {f}
+              </li>
+            ))}
+          </ul>
+          <button type="button" disabled className="w-full py-3 rounded-lg border border-border font-bold opacity-60">
+            {isFree ? 'Current plan' : 'Included'}
+          </button>
+        </div>
+
+        <div
+          className={`bg-surface border rounded-2xl p-6 flex flex-col ${
+            tier === 'pro' ? 'border-primary ring-1 ring-primary/30' : 'border-border'
+          }`}
+        >
+          <h2 className="text-xl font-bold mb-1">Insidr Pro</h2>
+          <p className="text-3xl font-bold mb-0.5">
+            ${billingCycle === 'annual' ? '280' : '28'}
+            <span className="text-sm font-normal text-text-muted">
+              /{billingCycle === 'annual' ? 'year' : 'mo'}
+            </span>
+          </p>
+          <p className="text-xs text-text-muted mb-5">
+            {billingCycle === 'annual' ? '~$23.33/mo billed yearly' : 'Billed monthly after trial'}
+          </p>
+          <ul className="space-y-2.5 mb-6 flex-1 text-sm text-text-muted">
+            {PRO_FEATURES.map((f) => (
+              <li key={f} className="flex gap-2">
+                <Check size={16} className="text-primary shrink-0 mt-0.5" />
+                {f}
+              </li>
+            ))}
+          </ul>
+          <div className="space-y-2">
+            <button
+              type="button"
+              disabled={isPro || loadingPlan === 'pro'}
+              onClick={() => startCheckout('pro')}
+              className="w-full py-3 rounded-lg border border-border font-bold disabled:opacity-50 btn-ghost hover:border-primary/40"
+            >
+              {loadingPlan === 'pro' ? (
+                <Loader2 className="mx-auto animate-spin" size={20} />
+              ) : isPro && !isElite ? (
+                'Current plan'
+              ) : isElite ? (
+                'Included in Elite'
+              ) : (
+                'Start 7-day free trial'
+              )}
+            </button>
+            {isDev && !isPro && (
+              <button
+                type="button"
+                disabled={loadingPlan === 'dev-pro'}
+                onClick={() => startDevTrial('pro')}
+                className="w-full py-2 text-[10px] font-bold text-text-muted hover:text-primary"
+              >
+                {loadingPlan === 'dev-pro' ? 'Starting…' : 'Dev: trial without Stripe'}
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div
+          className={`bg-surface border-2 rounded-2xl p-6 flex flex-col relative ${
+            isElite ? 'border-primary' : 'border-primary/60'
+          }`}
+        >
+          <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-primary text-bg-deep text-[10px] font-bold px-3 py-1 rounded-full flex items-center gap-1">
+            <Crown size={10} /> Best value
+          </div>
+          <h2 className="text-xl font-bold text-primary mb-1 mt-2">Insidr Elite</h2>
+          <p className="text-3xl font-bold mb-0.5">
+            ${billingCycle === 'annual' ? '790' : '79'}
+            <span className="text-sm font-normal text-text-muted">
+              /{billingCycle === 'annual' ? 'year' : 'mo'}
+            </span>
+          </p>
+          <p className="text-xs text-text-muted mb-5">
+            {billingCycle === 'annual' ? '~$65.83/mo billed yearly' : 'Billed monthly after trial'}
+          </p>
+          <ul className="space-y-2.5 mb-6 flex-1 text-sm">
+            {ELITE_FEATURES.map((f) => (
+              <li key={f} className="flex gap-2">
+                <Check size={16} className="text-primary shrink-0 mt-0.5" />
+                {f}
+              </li>
+            ))}
+          </ul>
+          <div className="space-y-2">
+            <button
+              type="button"
+              disabled={isElite || loadingPlan === 'elite'}
+              onClick={() => startCheckout('elite')}
+              className="w-full py-3 rounded-lg btn-primary font-bold disabled:opacity-50"
+            >
+              {loadingPlan === 'elite' ? (
+                <Loader2 className="mx-auto animate-spin" size={20} />
+              ) : isElite ? (
+                'Current plan'
+              ) : (
+                'Start 7-day free trial'
+              )}
+            </button>
+            {isDev && !isElite && (
+              <button
+                type="button"
+                disabled={loadingPlan === 'dev-elite'}
+                onClick={() => startDevTrial('elite')}
+                className="w-full py-2 text-[10px] font-bold text-text-muted hover:text-primary"
+              >
+                {loadingPlan === 'dev-elite' ? 'Starting…' : 'Dev: trial without Stripe'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default Pricing;

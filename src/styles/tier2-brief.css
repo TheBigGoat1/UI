@@ -1,0 +1,175 @@
+.daily-brief {
+  @apply rounded-2xl border border-primary/25 bg-gradient-to-br from-primary/5 via-surface to-surface p-5 md:p-6 space-y-4;
+}
+
+.daily-brief--loading {
+  @apply min-h-[120px] flex flex-col items-center justify-center gap-2;
+}
+
+.daily-brief__shimmer {
+  @apply w-full h-2 rounded bg-primary/10 animate-pulse;
+}
+
+.daily-brief__eyebrow {
+  @apply text-[10px] font-bold uppercase tracking-widest text-primary mb-1;
+}
+
+.daily-brief__title {
+  @apply text-lg md:text-xl font-bold text-text-main;
+}
+
+.daily-brief__guidance {
+  @apply text-xs text-text-muted mt-1 max-w-2xl;
+}
+
+.daily-brief__header {
+  @apply flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3;
+}
+
+.daily-brief__chips {
+  @apply flex flex-wrap gap-2;
+}
+
+.daily-brief__chip {
+  @apply inline-flex items-center gap-1 text-[10px] font-mono font-bold uppercase px-2 py-1 rounded border border-border/80 bg-background/50 text-text-muted;
+}
+
+.daily-brief__chip--warn {
+  @apply border-amber-500/40 text-amber-300 bg-amber-500/10;
+}
+
+.daily-brief__veteran {
+  @apply text-sm text-text-main/90 leading-relaxed border-l-2 border-primary/50 pl-3;
+}
+
+.daily-brief__sitout-soft {
+  @apply text-xs text-amber-200/80;
+}
+
+.daily-brief__suppressed {
+  @apply text-xs text-text-muted;
+}
+
+.daily-brief__suppressed summary {
+  @apply cursor-pointer text-primary font-bold;
+}
+
+.daily-brief__suppressed ul {
+  @apply mt-2 space-y-1 list-disc pl-4;
+}
+
+.daily-brief__footer {
+  @apply flex gap-4 pt-2 border-t border-border/50;
+}
+
+.focus-card {
+  @apply w-full text-left rounded-xl border border-primary/35 bg-background/60 p-4 hover:border-primary/60 hover:bg-primary/5 transition-all;
+}
+
+.focus-card--empty {
+  @apply flex flex-col items-center gap-2 text-center text-sm text-text-muted py-8 border border-dashed border-border rounded-xl;
+}
+
+.focus-card__badge-row {
+  @apply flex items-center justify-between mb-2;
+}
+
+.focus-card__label {
+  @apply text-[10px] font-bold uppercase text-primary flex items-center gap-1;
+}
+
+.focus-card__main {
+  @apply flex items-baseline gap-3 mb-2;
+}
+
+.focus-card__symbol {
+  @apply text-2xl font-bold text-text-main;
+}
+
+.focus-card__dir {
+  @apply text-sm font-bold uppercase;
+}
+
+.focus-card__conf {
+  @apply text-sm font-mono text-primary ml-auto;
+}
+
+.focus-card__thesis {
+  @apply text-sm text-text-muted line-clamp-2 mb-2;
+}
+
+.focus-card__meta {
+  @apply flex flex-wrap gap-3 text-[10px] text-text-muted font-mono uppercase mb-2;
+}
+
+.focus-card__invalid {
+  @apply text-[11px] text-red-400/90 mb-2;
+}
+
+.focus-card__cta {
+  @apply text-xs font-bold text-primary flex items-center gap-1;
+}
+
+.sit-out-hero {
+  @apply rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-6 text-center;
+}
+
+.sit-out-hero__icon {
+  @apply mx-auto text-emerald-400 mb-2;
+}
+
+.sit-out-hero__title {
+  @apply text-lg font-bold text-text-main mb-2;
+}
+
+.sit-out-hero__text {
+  @apply text-sm text-text-muted max-w-md mx-auto leading-relaxed;
+}
+
+.idea-grade {
+  @apply text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border;
+}
+
+.idea-grade--a {
+  @apply border-primary/50 text-primary bg-primary/15;
+}
+
+.idea-grade--b {
+  @apply border-emerald-500/40 text-emerald-400 bg-emerald-500/10;
+}
+
+.idea-grade--watch {
+  @apply border-amber-500/40 text-amber-300 bg-amber-500/10;
+}
+
+.debrief-panel {
+  @apply rounded-xl border border-border bg-surface p-4 space-y-3;
+}
+
+.debrief-panel__head {
+  @apply flex items-center gap-2;
+}
+
+.debrief-panel__head h3 {
+  @apply font-bold text-text-main text-sm flex-1;
+}
+
+.debrief-panel__stats {
+  @apply grid grid-cols-2 sm:grid-cols-5 gap-3;
+}
+
+.debrief-panel__stats .label {
+  @apply block text-[9px] uppercase text-text-muted;
+}
+
+.debrief-panel__stats .value {
+  @apply block text-sm font-bold font-mono text-text-main;
+}
+
+.debrief-panel__insight {
+  @apply text-xs text-text-muted leading-relaxed border-t border-border pt-3;
+}
+
+.accept-plan-panel {
+  @apply rounded-lg border border-border bg-background/40 p-4 space-y-3 text-sm;
+}

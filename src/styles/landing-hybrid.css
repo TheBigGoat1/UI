@@ -1,0 +1,229 @@
+/* Hybrid landing: full-bleed hero + Insidr modules + Lumio clarity */
+
+.landing-hybrid {
+  --hybrid-display: "Syne", "DM Sans", system-ui, sans-serif;
+  --hybrid-body: "DM Sans", system-ui, sans-serif;
+  --hybrid-mono: "JetBrains Mono", ui-monospace, monospace;
+  --lumio-blue: #4a6cf7;
+  --lumio-blue-soft: rgba(74, 108, 247, 0.12);
+}
+
+.landing-hybrid .hero-video__media--image {
+  object-fit: cover;
+  filter: var(--hero-video-filter);
+}
+
+.hero-overlay {
+  @apply absolute inset-0 pointer-events-none;
+}
+
+.hero-overlay--base {
+  background: var(--hero-overlay-base);
+}
+
+.hero-overlay--vignette {
+  background: var(--hero-overlay-vignette);
+}
+
+.hero-overlay--theme {
+  background: var(--hero-overlay-theme);
+}
+
+:root,
+[data-theme="dark"] {
+  --hero-overlay-base: rgba(8, 8, 14, 0.42);
+  --hero-overlay-vignette: radial-gradient(
+    ellipse 90% 80% at 50% 45%,
+    transparent 0%,
+    rgba(8, 8, 14, 0.55) 70%,
+    rgba(8, 8, 14, 0.88) 100%
+  );
+  --hero-overlay-theme: linear-gradient(
+    180deg,
+    rgba(8, 8, 14, 0.55) 0%,
+    rgba(8, 8, 14, 0.2) 42%,
+    rgba(8, 8, 14, 0.35) 70%,
+    rgba(8, 8, 14, 0.92) 100%
+  );
+}
+
+[data-theme="light"] {
+  --hero-overlay-base: rgba(18, 24, 48, 0.38);
+  --hero-overlay-vignette: radial-gradient(
+    ellipse 95% 85% at 50% 40%,
+    rgba(74, 108, 247, 0.08) 0%,
+    rgba(18, 24, 48, 0.45) 65%,
+    rgba(18, 24, 48, 0.75) 100%
+  );
+  --hero-overlay-theme: linear-gradient(
+    180deg,
+    rgba(24, 32, 64, 0.5) 0%,
+    rgba(74, 108, 247, 0.15) 35%,
+    rgba(248, 247, 244, 0.12) 65%,
+    rgba(243, 241, 236, 0.85) 100%
+  );
+  --hero-video-filter: brightness(0.92) contrast(1.05) saturate(1.08);
+}
+
+[data-theme="light"] .hero-headline__line {
+  color: #ffffff;
+  text-shadow:
+    0 2px 0 rgba(0, 0, 0, 0.85),
+    0 8px 28px rgba(18, 24, 48, 0.65);
+}
+
+[data-theme="light"] .hero-subtitle,
+[data-theme="light"] .hero-trust-row {
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.landing-chrome__theme-wrap {
+  @apply flex items-center gap-2 rounded-xl border px-2 py-1;
+  background: var(--theme-toggle-bg);
+  border-color: var(--theme-toggle-border);
+  backdrop-filter: blur(12px);
+}
+
+.landing-chrome__theme-label {
+  @apply hidden sm:inline text-[10px] font-bold uppercase tracking-wider text-text-muted;
+  font-family: var(--hybrid-body);
+}
+
+.landing-hybrid__lumio-band {
+  @apply relative py-16 md:py-24;
+  background: var(--flow-panel);
+}
+
+[data-theme="light"] .landing-hybrid__lumio-band {
+  background: linear-gradient(180deg, #f8f9ff 0%, #ffffff 50%, #f3f1ec 100%);
+}
+
+.landing-hybrid__section-title {
+  font-family: var(--hybrid-display);
+  font-size: clamp(1.75rem, 3.5vw, 2.75rem);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.15;
+  @apply text-text-main;
+}
+
+.landing-hybrid__section-lead {
+  font-family: var(--hybrid-body);
+  @apply text-text-muted text-base md:text-lg leading-relaxed max-w-2xl;
+}
+
+.landing-hybrid__eyebrow {
+  font-family: var(--hybrid-body);
+  @apply text-[11px] font-bold uppercase tracking-[0.2em] mb-4;
+  color: var(--color-primary);
+}
+
+[data-theme="light"] .landing-hybrid__eyebrow--blue {
+  color: var(--lumio-blue);
+}
+
+.landing-hybrid__feature-card {
+  @apply rounded-2xl border p-6 md:p-7 h-full transition-all duration-300;
+  background: var(--overlay-card);
+  border-color: var(--border-faint);
+  backdrop-filter: blur(12px);
+}
+
+.landing-hybrid__feature-card:hover {
+  @apply border-primary/35 shadow-card-hover;
+  transform: translateY(-3px);
+}
+
+[data-theme="light"] .landing-hybrid__feature-card {
+  background: #ffffff;
+  border-color: rgba(18, 21, 28, 0.08);
+  box-shadow: var(--shadow-card);
+}
+
+[data-theme="light"] .landing-hybrid__feature-card:hover {
+  border-color: rgba(74, 108, 247, 0.35);
+  box-shadow: 0 12px 40px rgba(74, 108, 247, 0.12);
+}
+
+.landing-hybrid__feature-card h3 {
+  font-family: var(--hybrid-display);
+  @apply text-lg font-semibold text-text-main mb-2;
+}
+
+.landing-hybrid__feature-card p {
+  font-family: var(--hybrid-body);
+  @apply text-sm text-text-muted leading-relaxed m-0;
+}
+
+.landing-hybrid__feed-panel {
+  @apply flex flex-col gap-3;
+}
+
+.landing-hybrid__feed-item {
+  @apply rounded-xl border p-4 transition-colors;
+  background: var(--overlay-glass-mid);
+  border-color: var(--border-faint);
+}
+
+[data-theme="light"] .landing-hybrid__feed-item {
+  background: #ffffff;
+  border-color: rgba(18, 21, 28, 0.08);
+  box-shadow: 0 2px 12px rgba(18, 21, 28, 0.04);
+}
+
+.landing-hybrid__feed-item strong {
+  font-family: var(--hybrid-body);
+  @apply block text-sm font-bold text-text-main mb-1;
+}
+
+.landing-hybrid__feed-item p {
+  @apply text-sm text-text-muted m-0 leading-relaxed;
+}
+
+.landing-hybrid__feed-meta {
+  font-family: var(--hybrid-mono);
+  @apply text-[10px] text-text-muted mt-2 uppercase tracking-wider;
+}
+
+.landing-hybrid__btn-lumio {
+  @apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-full text-sm font-bold transition-all;
+  background: var(--lumio-blue);
+  color: #ffffff;
+}
+
+.landing-hybrid__btn-lumio:hover {
+  filter: brightness(1.08);
+  box-shadow: 0 10px 28px rgba(74, 108, 247, 0.35);
+}
+
+[data-theme="dark"] .landing-hybrid__btn-lumio {
+  background: linear-gradient(135deg, var(--lumio-blue), #6b4fd4);
+}
+
+/* Nav on hero — always readable on image */
+.landing-chrome:not(.landing-chrome--scrolled) .landing-chrome__header .nav-link {
+  color: rgba(255, 255, 255, 0.88);
+}
+
+.landing-chrome:not(.landing-chrome--scrolled) .landing-chrome__header .nav-link:hover {
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+[data-theme="light"] .landing-chrome:not(.landing-chrome--scrolled) .landing-chrome__theme-wrap {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+[data-theme="light"] .landing-chrome:not(.landing-chrome--scrolled) .landing-chrome__theme-wrap .text-text-muted {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+[data-theme="light"] .stat-card-elevated {
+  @apply text-text-main;
+}
+
+[data-theme="light"] .landing-platform-video__title,
+[data-theme="light"] .landing-section-header__title {
+  @apply text-text-main;
+}

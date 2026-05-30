@@ -1,0 +1,44 @@
+/**
+ * Scrim & chrome utilities — palette in lumio-brand.css
+ */
+
+[data-theme='lumio'],
+:root {
+  color-scheme: dark;
+
+  --rgb-border: 30 41 59;
+  --primary-rgb: 34 211 238;
+  --secondary-rgb: 34 211 238;
+
+  --overlay-sidebar: rgba(5, 10, 20, 0.96);
+  --overlay-glass-soft: rgba(11, 18, 32, 0.55);
+  --overlay-glass-mid: rgba(11, 18, 32, 0.72);
+  --overlay-elevated: rgba(17, 24, 39, 0.95);
+  --border-faint: rgba(148, 163, 184, 0.12);
+  --text-on-media: #f8fafc;
+  --text-on-media-muted: rgba(248, 250, 252, 0.85);
+  --hero-subtitle: rgba(148, 163, 184, 0.95);
+  --ticker-bg: rgba(5, 10, 20, 0.85);
+  --ticker-fg: #f8fafc;
+  --ticker-sep: rgba(148, 163, 184, 0.2);
+  --shadow-card-hover: 0 16px 48px rgba(0, 0, 0, 0.4);
+  --shadow-glow-sm: 0 0 16px rgba(34, 211, 238, 0.2);
+  --page-grid-line: rgba(148, 163, 184, 0.15);
+  --page-grid-opacity: 0.04;
+  --video-platform-bg: var(--bg-deep);
+  --scrim-hero: linear-gradient(180deg, rgba(5, 10, 20, 0.4) 0%, rgba(5, 10, 20, 0.9) 100%);
+  --scrim-signals: linear-gradient(180deg, rgba(5, 10, 20, 0.95) 0%, rgba(11, 18, 32, 0.9) 100%);
+}
+
+.bg-chrome {
+  background: var(--overlay-chrome);
+}
+
+.landing-chrome__header {
+  border-color: var(--border-subtle);
+  background: var(--overlay-chrome);
+}
+
+.hero-headline__accent {
+  color: var(--accent);
+}
