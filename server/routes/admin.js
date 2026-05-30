@@ -335,6 +335,32 @@ router.get("/audit", requireAuth, requireAdmin, async (_req, res) => {
   return res.json({ success: true, data: rows });
 });
 
+router.get("/audit/export", requireAuth, requireAdmin, async (_req, res) => {
+  const { rows } = await query(
+    `SELECT id, level, message, context, created_at
+     FROM system_logs
+     ORDER BY created_at DESC
+     LIMIT 5000`,
+  );
+
+  const escape = (v) => {
+    const s = String(v ?? "");
+    return s.includes(",") || s.includes('"') || s.includes("\n")
+      ? `"${s.replace(/"/g, '""')}"`
+      : s;
+  };
+
+  const header = ["id", "level", "message", "context", "created_at"];
+  const lines = [
+    header.join(","),
+    ...rows.map((row) => header.map((key) => escape(row[key])).join(",")),
+  ];
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", 'attachment; filename="insidr-audit.csv"');
+  res.send(lines.join("\n"));
+});
+
 router.get("/users", requireAuth, requireAdmin, async (req, res) => {
   const q = String(req.query.q || "").trim();
   const status = String(req.query.status || "all").toLowerCase();
@@ -370,6 +396,69 @@ router.get("/users", requireAuth, requireAdmin, async (req, res) => {
   );
 
   res.json({ success: true, data: rows });
+});
+
+router.get("/users/export", requireAuth, requireAdmin, async (req, res) => {
+  const q = String(req.query.q || "").trim();
+  const status = String(req.query.status || "all").toLowerCase();
+  const tier = String(req.query.tier || "all").toLowerCase();
+
+  const filters = [];
+  const params = [];
+  let i = 1;
+
+  if (q) {
+    filters.push(`(email ILIKE $${i} OR full_name ILIKE $${i})`);
+    params.push(`%${q}%`);
+    i++;
+  }
+  if (status !== "all") {
+    filters.push(`subscription_status = $${i++}`);
+    params.push(status);
+  }
+  if (tier !== "all") {
+    filters.push(`tier = $${i++}`);
+    params.push(tier);
+  }
+
+  const where = filters.length ? `WHERE ${filters.join(" AND ")}` : "";
+  const { rows } = await query(
+    `SELECT email, full_name, tier, subscription_status, billing_cycle,
+            trial_ends_at, subscription_ends_at, setup_complete, created_at
+     FROM users
+     ${where}
+     ORDER BY created_at DESC
+     LIMIT 5000`,
+    params,
+  );
+
+  const escape = (v) => {
+    const s = String(v ?? "");
+    return s.includes(",") || s.includes('"') ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+
+  const header = [
+    "email",
+    "full_name",
+    "tier",
+    "subscription_status",
+    "billing_cycle",
+    "trial_ends_at",
+    "subscription_ends_at",
+    "setup_complete",
+    "created_at",
+  ];
+
+  const lines = [
+    header.join(","),
+    ...rows.map((row) =>
+      header.map((key) => escape(row[key])).join(","),
+    ),
+  ];
+
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", 'attachment; filename="insidr-users.csv"');
+  res.send(lines.join("\n"));
 });
 
 router.patch("/users/:id/subscription", requireAuth, requireAdmin, async (req, res) => {

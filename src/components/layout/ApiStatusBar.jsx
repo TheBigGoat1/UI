@@ -7,15 +7,24 @@ import { api } from '../../services/api/api.js';
  */
 const ApiStatusBar = ({ className = '' }) => {
   const [online, setOnline] = useState(true);
+  const [staleApi, setStaleApi] = useState(false);
   const [checking, setChecking] = useState(false);
 
   const check = async () => {
     setChecking(true);
     try {
       const res = await api.system.getHealth();
-      setOnline(!!res?.success);
+      const ok = !!res?.success;
+      setOnline(ok);
+      if (ok) {
+        const trader = await api.trader.ping();
+        setStaleApi(!trader?.success || trader?.status === 404);
+      } else {
+        setStaleApi(false);
+      }
     } catch {
       setOnline(false);
+      setStaleApi(false);
     } finally {
       setChecking(false);
     }
@@ -27,7 +36,7 @@ const ApiStatusBar = ({ className = '' }) => {
     return () => clearInterval(id);
   }, []);
 
-  if (online) return null;
+  if (online && !staleApi) return null;
 
   return (
     <div
@@ -37,13 +46,29 @@ const ApiStatusBar = ({ className = '' }) => {
       <div className="flex items-start gap-3 flex-1 min-w-0">
         <AlertTriangle size={20} className="text-amber-400 shrink-0 mt-0.5" />
         <div>
-          <p className="font-bold text-amber-100">API offline — data cannot load</p>
+          <p className="font-bold text-amber-100">
+            {staleApi ? 'API is outdated — restart required' : 'API offline — data cannot load'}
+          </p>
           <p className="text-amber-200/80 text-xs mt-1 leading-relaxed">
-            Start both servers from the project folder:{' '}
-            <code className="px-1.5 py-0.5 rounded bg-black/30 font-mono text-[11px]">
-              npm run dev:all
-            </code>
-            . The API runs on port <strong>3001</strong>, the app on <strong>5173</strong>.
+            {staleApi ? (
+              <>
+                The server is running an old build without watchlist / event-gate routes. Stop all Node
+                processes, then run{' '}
+                <code className="px-1.5 py-0.5 rounded bg-black/30 font-mono text-[11px]">
+                  npm run dev:all
+                </code>{' '}
+                and hard-refresh the browser.
+              </>
+            ) : (
+              <>
+                Start both servers from the project folder:{' '}
+                <code className="px-1.5 py-0.5 rounded bg-black/30 font-mono text-[11px]">
+                  npm run dev:all
+                </code>
+                . Match <code className="font-mono text-[11px]">VITE_API_URL</code> in .env to the
+                port the API binds (often 3001 or 3003).
+              </>
+            )}
           </p>
         </div>
       </div>

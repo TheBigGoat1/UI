@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext.jsx';
+import { LayoutProvider, useLayout } from '../context/LayoutContext.jsx';
+import { hasPaidAccess } from '../utils/entitlements.js';
 import { api } from '../services/api/api.js';
 import AIChatWidget from '../components/widgets/AIChatWidget';
 import ApiStatusBar from '../components/layout/ApiStatusBar.jsx';
+import NotificationBell from '../components/layout/NotificationBell.jsx';
 import BrandLogo from '../components/brand/BrandLogo';
 import {
   LayoutDashboard,
@@ -25,24 +28,59 @@ import {
   Globe,
 } from 'lucide-react';
 
-const navItems = [
-  { name: 'Overview', path: '/dashboard', icon: LayoutDashboard, exact: true },
-  { name: 'Ideas', path: '/dashboard/ideas', icon: Lightbulb },
-  { name: 'Journal', path: '/dashboard/journal', icon: BookOpen },
-  { name: 'Connections', path: '/dashboard/connections', icon: Link2 },
-  { name: 'Calendar', path: '/dashboard/calendar', icon: Calendar },
-  { name: 'News', path: '/dashboard/news', icon: Newspaper },
-  { name: 'Economy', path: '/dashboard/economy', icon: Globe },
-  { name: 'Backtest', path: '/dashboard/backtest', icon: LineChart },
-  { name: 'Plans', path: '/dashboard/pricing', icon: Zap },
-  { name: 'Settings', path: '/dashboard/settings', icon: Settings },
+const navSections = [
+  {
+    label: 'Trade',
+    items: [
+      { name: 'Overview', path: '/dashboard', icon: LayoutDashboard, exact: true },
+      { name: 'Ideas', path: '/dashboard/ideas', icon: Lightbulb },
+      { name: 'Journal', path: '/dashboard/journal', icon: BookOpen },
+    ],
+  },
+  {
+    label: 'Intel',
+    items: [
+      { name: 'Calendar', path: '/dashboard/calendar', icon: Calendar },
+      { name: 'News', path: '/dashboard/news', icon: Newspaper },
+      { name: 'Economy', path: '/dashboard/economy', icon: Globe },
+    ],
+  },
+  {
+    label: 'Tools',
+    items: [
+      { name: 'Connections', path: '/dashboard/connections', icon: Link2 },
+      { name: 'Backtest', path: '/dashboard/backtest', icon: LineChart, pro: true },
+    ],
+  },
+  {
+    label: 'Account',
+    items: [
+      { name: 'Plans', path: '/dashboard/pricing', icon: Zap },
+      { name: 'Settings', path: '/dashboard/settings', icon: Settings },
+    ],
+  },
 ];
 
-const DashboardLayout = () => {
+const navItems = navSections.flatMap((s) => s.items);
+
+const mobilePrimaryItems = [
+  navSections[0].items[0],
+  navSections[0].items[1],
+  navSections[0].items[2],
+];
+
+const mobileMoreSections = navSections
+  .map((section) => ({
+    ...section,
+    items: section.label === 'Trade' ? section.items.slice(3) : section.items,
+  }))
+  .filter((section) => section.items.length > 0);
+
+const DashboardLayoutInner = () => {
   const { user, logout } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
-  const [isCollapsed, setIsCollapsed] = useState(false);
+  const { isCollapsed, setIsCollapsed, chartMode } = useLayout();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [apiOnline, setApiOnline] = useState(true);
 
@@ -73,13 +111,15 @@ const DashboardLayout = () => {
     setMobileMenuOpen(false);
   }, [location.pathname]);
 
-  const tierLabel = user?.tier === 'pro' || user?.tier === 'elite' ? user.tier.toUpperCase() : 'FREE';
+  const tierLabel = hasPaidAccess(user)
+    ? (user?.tier || 'free').toUpperCase()
+    : 'FREE';
   const activePage = navItems.find((item) =>
     item.exact ? location.pathname === item.path : location.pathname.startsWith(item.path)
   );
 
   return (
-    <div className="dash-shell selection:bg-primary/30">
+    <div className={`dash-shell selection:bg-primary/30 ${chartMode ? 'dash-shell--chart-mode' : ''}`}>
       <div className="dash-shell__ambient" aria-hidden="true" />
 
       <aside
@@ -131,25 +171,44 @@ const DashboardLayout = () => {
         )}
 
         <nav className="dash-sidebar__nav" aria-label="Dashboard">
-          {navItems.map((item) => {
-            const isActive = item.exact
-              ? location.pathname === item.path
-              : location.pathname.startsWith(item.path);
+          {navSections.map((section) => (
+            <div key={section.label} className={isCollapsed ? 'mb-1' : 'mb-3'}>
+              {!isCollapsed && (
+                <p className="px-3 mb-1 text-[9px] font-bold uppercase tracking-widest text-text-muted/70">
+                  {section.label}
+                </p>
+              )}
+              {section.items.map((item) => {
+                const isActive = item.exact
+                  ? location.pathname === item.path
+                  : location.pathname.startsWith(item.path);
+                const locked = item.pro && !hasPaidAccess(user);
 
-            return (
-              <Link
-                key={item.name}
-                to={item.path}
-                title={isCollapsed ? item.name : undefined}
-                className={`nav-item ${isActive ? 'nav-item-active' : 'text-text-muted'} ${
-                  isCollapsed ? 'justify-center px-2' : ''
-                }`}
-              >
-                <item.icon size={20} className={`shrink-0 ${isActive ? 'text-primary' : ''}`} />
-                {!isCollapsed && <span className="whitespace-nowrap">{item.name}</span>}
-              </Link>
-            );
-          })}
+                return (
+                  <Link
+                    key={item.name}
+                    to={item.path}
+                    title={isCollapsed ? item.name : undefined}
+                    className={`nav-item ${isActive ? 'nav-item-active' : 'text-text-muted'} ${
+                      isCollapsed ? 'justify-center px-2' : ''
+                    }`}
+                  >
+                    <item.icon size={20} className={`shrink-0 ${isActive ? 'text-primary' : ''}`} />
+                    {!isCollapsed && (
+                      <span className="whitespace-nowrap flex items-center gap-2">
+                        {item.name}
+                        {locked && (
+                          <span className="text-[8px] font-bold uppercase text-text-muted border border-border px-1 rounded">
+                            Pro
+                          </span>
+                        )}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
         </nav>
 
         <div className="dash-sidebar__foot">
@@ -170,13 +229,16 @@ const DashboardLayout = () => {
       <div className="dash-main">
         <header className="md:hidden h-[72px] glass-panel border-x-0 border-t-0 rounded-none flex items-center justify-between px-4 z-20 shrink-0 gap-2">
           <BrandLogo size="sm" linkTo="/dashboard" />
-          <span
+          <div className="flex items-center gap-2">
+            <NotificationBell />
+            <span
             className={`text-[10px] font-bold px-2.5 py-1 rounded-lg uppercase tracking-wider border ${
               tierLabel !== 'FREE' ? 'bg-primary/15 text-primary border-primary/30' : 'bg-surface-hover text-text-muted'
             }`}
           >
             {tierLabel}
           </span>
+          </div>
         </header>
 
         <div className="dash-topbar">
@@ -185,6 +247,7 @@ const DashboardLayout = () => {
             <h1 className="dash-topbar__title">{activePage?.name || 'Overview'}</h1>
           </div>
           <div className="dash-topbar__actions">
+            <NotificationBell />
             <span
               className={`dash-status-pill ${apiOnline ? 'dash-status-pill--live' : 'border-amber-500/40 text-amber-300'}`}
               title={apiOnline ? 'API connected' : 'Run npm run dev:all'}
@@ -208,7 +271,7 @@ const DashboardLayout = () => {
 
       <nav className="dash-mobile-bar md:hidden" aria-label="Mobile navigation">
         <div className="dash-mobile-bar__inner">
-          {navItems.slice(0, 4).map((item) => {
+          {mobilePrimaryItems.map((item) => {
             const isActive = item.exact
               ? location.pathname === item.path
               : location.pathname.startsWith(item.path);
@@ -231,10 +294,31 @@ const DashboardLayout = () => {
             type="button"
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className={`flex flex-1 flex-col items-center justify-center gap-0.5 py-1 ${
-              mobileMenuOpen ? 'text-text-main' : 'text-text-muted'
+              mobileMenuOpen || mobileMoreSections.some((s) =>
+                s.items.some((item) =>
+                  item.exact
+                    ? location.pathname === item.path
+                    : location.pathname.startsWith(item.path),
+                ),
+              )
+                ? 'text-primary'
+                : 'text-text-muted'
             }`}
           >
-            <span className={`p-1.5 rounded-xl ${mobileMenuOpen ? 'bg-surface-hover' : ''}`}>
+            <span
+              className={`p-1.5 rounded-xl ${
+                mobileMenuOpen ||
+                mobileMoreSections.some((s) =>
+                  s.items.some((item) =>
+                    item.exact
+                      ? location.pathname === item.path
+                      : location.pathname.startsWith(item.path),
+                  ),
+                )
+                  ? 'bg-primary/15'
+                  : ''
+              }`}
+            >
               {mobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
             </span>
             <span className="text-[10px] font-bold">More</span>
@@ -245,24 +329,40 @@ const DashboardLayout = () => {
       {mobileMenuOpen && (
         <div className="md:hidden fixed inset-0 top-16 bottom-20 z-40 animate-fade-in">
           <div className="absolute inset-0 bg-background/70 backdrop-blur-sm" onClick={() => setMobileMenuOpen(false)} aria-hidden="true" />
-          <div className="absolute inset-x-4 top-2 bottom-2 dash-panel p-4 overflow-y-auto custom-scrollbar flex flex-col">
-            <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-3 px-2">Tools</h3>
-            <div className="space-y-2 flex-1">
-              {navItems.slice(4).map((item) => {
-                const isActive = location.pathname.startsWith(item.path);
-                return (
-                  <Link
-                    key={item.name}
-                    to={item.path}
-                    className={`nav-item ${isActive ? 'nav-item-active' : ''}`}
-                  >
-                    <item.icon size={20} />
-                    {item.name}
-                  </Link>
-                );
-              })}
-            </div>
-            <button type="button" onClick={handleLogout} className="nav-item w-full mt-4 text-danger">
+          <div className="absolute inset-x-4 top-2 bottom-2 dash-panel p-4 overflow-y-auto custom-scrollbar flex flex-col gap-4">
+            {mobileMoreSections.map((section) => (
+              <div key={section.label}>
+                <h3 className="text-xs font-bold text-text-muted uppercase tracking-wider mb-2 px-2">
+                  {section.label}
+                </h3>
+                <div className="space-y-1">
+                  {section.items.map((item) => {
+                    const isActive = item.exact
+                      ? location.pathname === item.path
+                      : location.pathname.startsWith(item.path);
+                    const locked = item.pro && !hasPaidAccess(user);
+                    return (
+                      <Link
+                        key={item.name}
+                        to={item.path}
+                        className={`nav-item ${isActive ? 'nav-item-active' : ''}`}
+                      >
+                        <item.icon size={20} />
+                        <span className="flex items-center gap-2">
+                          {item.name}
+                          {locked && (
+                            <span className="text-[8px] font-bold uppercase text-text-muted border border-border px-1 rounded">
+                              Pro
+                            </span>
+                          )}
+                        </span>
+                      </Link>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+            <button type="button" onClick={handleLogout} className="nav-item w-full mt-auto text-danger">
               <LogOut size={20} />
               Log out
             </button>
@@ -276,5 +376,11 @@ const DashboardLayout = () => {
     </div>
   );
 };
+
+const DashboardLayout = () => (
+  <LayoutProvider>
+    <DashboardLayoutInner />
+  </LayoutProvider>
+);
 
 export default DashboardLayout;

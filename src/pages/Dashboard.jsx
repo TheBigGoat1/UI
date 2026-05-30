@@ -13,8 +13,11 @@ import {
   Clock,
   RefreshCw,
   AlertTriangle,
+  Maximize2,
+  Minimize2,
+  Sparkles,
 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import PageHeader from "../components/layout/PageHeader";
 import DashSelect from "../components/ui/DashSelect.jsx";
 import DashStat from "../components/dashboard/DashStat";
@@ -22,7 +25,7 @@ import DashPanel from "../components/dashboard/DashPanel";
 import AssetGrid from "../components/dashboard/AssetGrid";
 import AssetAnalysisPanel from "../components/dashboard/AssetAnalysisPanel";
 import TradeChart from "../components/TradeChart";
-import { useAuth } from "../context/AuthContext";
+import { useAuth } from "../context/AuthContext.jsx";
 import { useAssetAnalysis } from "../hooks/useAssetAnalysis.js";
 import { resolveMarketQuote } from "../utils/marketQuote.js";
 import {
@@ -35,10 +38,23 @@ import {
 } from "../utils/chartConfig.js";
 import { subscribeSocket } from "../services/realtime/socket.js";
 import DailyBriefPanel from "../components/brief/DailyBriefPanel";
+import TopIdeasStrip from "../components/dashboard/TopIdeasStrip";
+import BookHeatMeter from "../components/dashboard/BookHeatMeter";
+import SetupChecklist from "../components/dashboard/SetupChecklist";
+import RiskRegimeBanner from "../components/macro/RiskRegimeBanner";
+import { useLayout } from "../context/LayoutContext.jsx";
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuth();
+  const { chartMode, toggleChartMode } = useLayout();
+  const showWelcome = searchParams.get('welcome') === '1';
+  const checkoutSuccess = searchParams.get('checkout') === 'success';
+
+  const dismissWelcome = () => {
+    setSearchParams({}, { replace: true });
+  };
 
   // -- STATE --
   const [assetsList, setAssetsList] = useState([]);
@@ -116,8 +132,12 @@ const Dashboard = () => {
   useEffect(() => {
     loadMarketData();
     const interval = setInterval(async () => {
-      const res = await api.market.getAllPrices();
-      if (res.success) setPrices(res.data);
+      try {
+        const res = await api.market.getAllPrices();
+        if (res?.success) setPrices(res.data);
+      } catch {
+        /* price poll failed — keep last snapshot */
+      }
     }, 5000);
     const offPrices = subscribeSocket("market:prices", (payload) => {
       if (payload?.prices) setPrices(payload.prices);
@@ -129,6 +149,21 @@ const Dashboard = () => {
       clearInterval(interval);
       offPrices();
       offRealtime();
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    api.trader
+      .getWatchlist()
+      .then((res) => {
+        if (!active || !res?.success || !Array.isArray(res.data) || !res.data.length) return;
+        const first = res.data[0].symbol || res.data[0];
+        if (first) setSelectedAsset(String(first).toUpperCase());
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
     };
   }, []);
 
@@ -272,7 +307,7 @@ const Dashboard = () => {
   const riskUp = risk?.environment?.includes("RISK_ON");
 
   return (
-    <div className="dash-page dash-overview-grid">
+    <div className={`dash-page dash-overview-grid ${chartMode ? 'dash-page--chart-mode' : ''}`}>
       {fetchError && (
         <div className="dash-empty-banner" role="alert">
           <span className="flex items-center gap-2">
@@ -291,6 +326,42 @@ const Dashboard = () => {
           </button>
         </div>
       )}
+
+      {showWelcome && (
+        <div className="rounded-xl border border-primary/30 bg-primary/10 px-4 py-4 flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-start gap-3 min-w-0">
+            <Sparkles size={20} className="text-primary shrink-0 mt-0.5" />
+            <div>
+              <p className="font-bold text-text-main">
+                {checkoutSuccess ? 'Trial activated — welcome to Insidr' : 'Welcome to Insidr'}
+              </p>
+              <p className="text-sm text-text-muted mt-1">
+                {checkoutSuccess ? (
+                  <>
+                    Your {(user?.tier || 'pro').toUpperCase()} plan is live. Backtest and idea generation
+                    are unlocked — your watchlist drives the default chart here and in News.
+                  </>
+                ) : (
+                  <>
+                    Your watchlist drives the default chart here and in News. Start with today&apos;s ideas or
+                    tune risk in Settings.
+                  </>
+                )}
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 shrink-0">
+            <button type="button" onClick={dismissWelcome} className="btn-ghost text-xs px-3 py-2">
+              Dismiss
+            </button>
+            <Link to="/dashboard/ideas" className="btn-primary text-xs px-4 py-2">
+              View ideas <ArrowRight size={14} className="inline ml-1" />
+            </Link>
+          </div>
+        </div>
+      )}
+
+      <SetupChecklist showWelcome={showWelcome} />
 
       <PageHeader
         icon={BarChart2}
@@ -321,6 +392,13 @@ const Dashboard = () => {
         onFocusClick={() => navigate("/dashboard/ideas")}
       />
 
+      <div className="dash-overview-command-row">
+        <TopIdeasStrip />
+        <BookHeatMeter />
+      </div>
+
+      <RiskRegimeBanner />
+
       <div className="dash-stat-grid">
         <DashStat
           label="System"
@@ -334,7 +412,11 @@ const Dashboard = () => {
           value={riskLabel}
           icon={Activity}
           tone={riskUp ? "success" : "danger"}
-          sub="Macro environment gauge"
+          sub={
+            risk?.macroPulse?.topCountry
+              ? `${risk.macroPulse.topCountry.label} · macro ${risk.macroPulse.aggregateRisk}`
+              : "Macro environment gauge"
+          }
         />
         {risk?.details?.vix ? (
           <DashStat
@@ -382,6 +464,32 @@ const Dashboard = () => {
         viewAll={viewAllAssets}
         onToggleViewAll={() => setViewAllAssets((v) => !v)}
       />
+
+      {selectedAsset && (
+        <div className="flex flex-wrap items-center gap-3 -mt-4">
+          <Link
+            to={`/dashboard/news?asset=${encodeURIComponent(selectedAsset)}`}
+            className="text-xs font-bold text-primary hover:underline"
+          >
+            News for {selectedAsset}
+          </Link>
+          <span className="text-text-muted text-xs">·</span>
+          <Link
+            to="/dashboard/economy"
+            className="text-xs font-bold text-text-muted hover:text-primary"
+          >
+            Macro pulse
+          </Link>
+          {risk?.macroPulse?.topCountry && (
+            <>
+              <span className="text-text-muted text-xs">·</span>
+              <span className="text-[10px] text-text-muted">
+                Global macro heat: {risk.macroPulse.aggregateRisk}
+              </span>
+            </>
+          )}
+        </div>
+      )}
 
       <DashPanel className="w-full" bodyClassName="p-0 !overflow-visible">
         <div className="dash-market-layout">
@@ -448,6 +556,19 @@ const Dashboard = () => {
               )}
             </div>
             <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={toggleChartMode}
+                className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border transition-colors inline-flex items-center gap-1.5 ${
+                  chartMode
+                    ? 'border-primary/40 bg-primary/10 text-primary'
+                    : 'border-border text-text-muted hover:text-text-main'
+                }`}
+                title={chartMode ? 'Exit chart mode' : 'Collapse nav and expand chart'}
+              >
+                {chartMode ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                {chartMode ? 'Exit chart mode' : 'Chart mode'}
+              </button>
               <DashSelect
                 label="Interval"
                 value={chartConfig.interval}

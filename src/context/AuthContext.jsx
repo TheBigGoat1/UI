@@ -103,6 +103,7 @@ export const AuthProvider = ({ children }) => {
                   subscription_status: res.data.subscription_status,
                   trial_ends_at: res.data.trial_ends_at,
                   has_access: res.data.has_access,
+                  capabilities: res.data.capabilities,
                 }
               : prev,
           );
@@ -191,16 +192,6 @@ export const AuthProvider = ({ children }) => {
   return (
     <AuthContext.Provider value={value}>
       {children}
-      {loading && (
-        <div
-          className="fixed inset-0 z-[9999] bg-background flex flex-col items-center justify-center gap-4"
-          aria-busy="true"
-          aria-label="Loading"
-        >
-          <div className="h-10 w-10 rounded-xl border-2 border-primary/30 border-t-primary animate-spin" />
-          <p className="text-sm font-bold text-text-muted uppercase tracking-wider">Loading Insidr</p>
-        </div>
-      )}
     </AuthContext.Provider>
   );
 };
@@ -208,6 +199,21 @@ export const AuthProvider = ({ children }) => {
 export const useAuth = () => {
   const context = useContext(AuthContext);
   if (!context) {
+    if (import.meta.env.DEV) {
+      console.warn('[Auth] useAuth called outside AuthProvider — using dev fallback');
+      return {
+        user: null,
+        session: null,
+        token: null,
+        login: async () => ({ success: false, error: 'Auth not ready' }),
+        register: async () => ({ success: false, error: 'Auth not ready' }),
+        logout: async () => {},
+        completeSetup: async () => ({ success: false, error: 'Auth not ready' }),
+        refreshUser: async () => ({ success: false }),
+        isAuthenticated: false,
+        loading: true,
+      };
+    }
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;

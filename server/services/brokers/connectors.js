@@ -36,14 +36,37 @@ export function parseCsvTrades(csvText, exchange = "csv") {
   const lines = String(csvText || "").split(/\r?\n/).filter(Boolean);
   if (lines.length < 2) return [];
   const headers = lines[0].split(",").map((h) => h.trim().toLowerCase());
+  const pick = (row, keys) => {
+    for (const key of keys) {
+      if (row[key] != null && row[key] !== "") return row[key];
+    }
+    return null;
+  };
+
   return lines.slice(1).map((line) => {
     const cols = line.split(",");
     const row = {};
     headers.forEach((h, i) => {
       row[h] = cols[i]?.trim();
     });
-    return normalizeTrade(row, exchange);
-  });
+
+    const sideRaw = String(pick(row, ["side", "type", "direction", "position"]) || "long").toLowerCase();
+    const pnlRaw = pick(row, ["pnl", "profit", "pl", "p&l", "net_pnl"]);
+    const dateRaw = pick(row, ["opened_at", "date", "entry_date", "close_date", "timestamp"]);
+
+    return normalizeTrade(
+      {
+        symbol: pick(row, ["symbol", "asset", "pair", "ticker"]),
+        side: sideRaw.includes("short") || sideRaw === "sell" ? "short" : "long",
+        pnl: pnlRaw,
+        strategy: pick(row, ["strategy", "setup", "notes"]),
+        emotion: pick(row, ["emotion", "psychology", "mindset"]),
+        status: pick(row, ["status", "result"]),
+        opened_at: dateRaw,
+      },
+      exchange,
+    );
+  }).filter((trade) => trade.symbol);
 }
 
 export async function fetchBrokerTrades(exchangeId) {

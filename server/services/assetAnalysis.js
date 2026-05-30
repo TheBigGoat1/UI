@@ -2,6 +2,7 @@ import { getAssetMeta, getAssetProfile } from "../config/assets.js";
 import { cached } from "./cache.js";
 import { getHistory, getSyntheticHistory } from "./marketData.js";
 import {
+  applyEngineModules,
   buildTechnicalPayloadForTimeframes,
   neutralTechnicalPayload,
 } from "./technical.js";
@@ -53,12 +54,16 @@ export async function getAssetAnalysis(
   symbol,
   chartInterval = "4h",
   chartPeriod = "1M",
+  engineModules = null,
 ) {
   const key = normalizeSymbol(symbol);
   const interval = normalizeInterval(chartInterval);
   const period = normalizePeriod(chartPeriod);
   const stack = resolveTimeframeStack(interval, period);
-  const cacheKey = `asset-analysis:${key}:${stack.chart.interval}:${stack.chart.period}`;
+  const moduleKey = engineModules
+    ? JSON.stringify(engineModules)
+    : "default";
+  const cacheKey = `asset-analysis:${key}:${stack.chart.interval}:${stack.chart.period}:${moduleKey}`;
 
   try {
     return await cached(cacheKey, CACHE_MS, async () => {
@@ -85,6 +90,10 @@ export async function getAssetAnalysis(
         );
       } catch {
         technical = neutralTechnicalPayload(key);
+      }
+
+      if (engineModules) {
+        technical = applyEngineModules(technical, engineModules);
       }
 
       const synthetic = chartLoad.synthetic || htfLoad.synthetic;

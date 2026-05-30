@@ -1,0 +1,18 @@
+{
+  "name": "Insidr — Trading Intelligence",
+  "short_name": "Insidr",
+  "description": "Institutional-grade trading intelligence, ideas, and journal.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050A14",
+  "theme_color": "#050A14",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/ic_trending_up.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

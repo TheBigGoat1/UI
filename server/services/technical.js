@@ -183,6 +183,51 @@ function buildSummary(asset, analysis, rsi, volatility, levels, tfLabels = {}) {
   return `${asset} on ${ltfLbl}: ${biasLabel} bias (${analysis.confidence}%). ${alignNote}. ${rsiNote}, ${volNote}.`;
 }
 
+/** Filter analysis modules per user engine toggles (Settings → Data & feeds). */
+export function applyEngineModules(payload, config = {}) {
+  if (!payload?.modules || !config || typeof config !== 'object') return payload;
+
+  const next = {
+    ...payload,
+    modules: { ...payload.modules },
+  };
+
+  if (config.marketStructure === false) {
+    delete next.modules.marketStructure;
+    next.confidence = Math.max(38, (next.confidence || 50) - 14);
+  }
+
+  const levelsOff =
+    config.supportResistance === false && config.psychologicalLevels === false;
+  if (levelsOff) {
+    delete next.modules.levels;
+    next.confidence = Math.max(38, (next.confidence || 50) - 8);
+  } else if (config.supportResistance === false && next.modules.levels) {
+    next.modules.levels = { last: next.modules.levels.last };
+  }
+
+  if (config.rsiDivergence === false && config.sma === false) {
+    delete next.modules.momentum;
+    next.confidence = Math.max(38, (next.confidence || 50) - 10);
+  }
+
+  const advancedOff =
+    config.orderBlocks === false &&
+    config.pocLevels === false &&
+    config.harmonics === false &&
+    config.liquidity === false &&
+    config.fibonacci === false;
+  if (advancedOff) {
+    next.advancedModulesDisabled = true;
+  }
+
+  next.enabledModules = Object.entries(config)
+    .filter(([, on]) => on !== false)
+    .map(([key]) => key);
+
+  return next;
+}
+
 export function buildTechnicalPayloadForTimeframes(
   asset,
   chartBars,

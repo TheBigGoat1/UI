@@ -8,7 +8,7 @@ import {
   verifyPassword,
 } from "../utils/auth.js";
 import { requireAuth } from "../middleware/auth.js";
-import { syncUserSubscription, accessSnapshot } from "../services/subscriptionAccess.js";
+import { syncUserSubscription, accessSnapshot, userCapabilities } from "../services/subscriptionAccess.js";
 import {
   validatePasswordStrength,
   PASSWORD_POLICY_TEXT,
@@ -74,12 +74,14 @@ router.post("/login", async (req, res) => {
 router.get("/me", requireAuth, async (req, res) => {
   const user = await syncUserSubscription(req.user);
   const access = accessSnapshot(user);
+  const caps = userCapabilities(user);
   res.json({
     success: true,
     data: {
       ...toPublicUser(user),
       has_access: access.has_access,
       payment_required: access.payment_required,
+      capabilities: caps.available,
     },
   });
 });

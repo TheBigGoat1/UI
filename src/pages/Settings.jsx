@@ -2,8 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import PageHeader from '../components/layout/PageHeader';
 import PlatformGuide from '../components/settings/PlatformGuide';
+import DataFeedsPanel from '../components/settings/DataFeedsPanel';
+import WatchlistPanel from '../components/settings/WatchlistPanel';
+import AlertsPanel from '../components/settings/AlertsPanel.jsx';
 import ActivityLog from '../components/settings/ActivityLog';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext.jsx';
+import { useEntitlements } from '../hooks/useEntitlements.js';
 import { api } from '../services/api/api.js';
 import {
   Settings as SettingsIcon,
@@ -19,6 +23,7 @@ import {
   BookOpen,
   Bell,
   User,
+  Radio,
 } from 'lucide-react';
 
 const RISK_KEY = 'insidr_risk_settings';
@@ -28,6 +33,7 @@ const TABS = [
   { id: 'account', label: 'Account', icon: User },
   { id: 'trading', label: 'Trading', icon: Cpu },
   { id: 'safety', label: 'Safety', icon: Shield },
+  { id: 'data', label: 'Data & feeds', icon: Radio },
   { id: 'guide', label: 'Platform guide', icon: BookOpen },
   { id: 'activity', label: 'Activity', icon: Bell },
 ];
@@ -54,10 +60,11 @@ const defaultEngine = {
   rsiDivergence: true,
 };
 
-const VALID_TABS = ['account', 'trading', 'safety', 'guide', 'activity'];
+const VALID_TABS = ['account', 'trading', 'safety', 'data', 'guide', 'activity'];
 
 const Settings = () => {
-  const { user } = useAuth();
+  const { user, refreshUser } = useAuth();
+  const { paid, canGenerateIdeas, canRunBacktest, capabilities } = useEntitlements();
   const [searchParams, setSearchParams] = useSearchParams();
   const rawTab = searchParams.get('tab') || 'account';
   const tab = VALID_TABS.includes(rawTab) ? rawTab : 'account';
@@ -73,7 +80,10 @@ const Settings = () => {
   const [flattenMsg, setFlattenMsg] = useState(null);
   const [riskSettings, setRiskSettings] = useState(defaultRisk);
   const [engineModules, setEngineModules] = useState(defaultEngine);
-  const [alertRules, setAlertRules] = useState([]);
+  const [alertPanelMsg, setAlertPanelMsg] = useState(null);
+  const [devTrialLoading, setDevTrialLoading] = useState(null);
+  const [billingMsg, setBillingMsg] = useState(null);
+  const isDev = import.meta.env.DEV;
 
   useEffect(() => {
     try {
@@ -109,14 +119,10 @@ const Settings = () => {
       .catch(() => setOpenCount(0));
   }, [flattenMsg]);
 
-  useEffect(() => {
-    api.alerts
-      .getRules()
-      .then((res) => {
-        if (res?.success) setAlertRules(res.data || []);
-      })
-      .catch(() => {});
-  }, []);
+  const showAlertMessage = (text, isError = false) => {
+    setAlertPanelMsg({ text, isError });
+    setTimeout(() => setAlertPanelMsg(null), 4000);
+  };
 
   const openBillingPortal = async () => {
     setPortalLoading(true);
@@ -125,9 +131,34 @@ const Settings = () => {
       if (res?.data?.url) window.location.href = res.data.url;
       else alert(res?.error || 'Could not open billing portal.');
     } catch (err) {
-      alert(err.error || 'Billing portal unavailable.');
+      const msg = err.error || 'Billing portal unavailable.';
+      alert(
+        msg.includes('No billing account') || msg.includes('Subscribe')
+          ? 'No billing account yet. View plans to start a trial or subscription first.'
+          : msg,
+      );
     } finally {
       setPortalLoading(false);
+    }
+  };
+
+  const startDevTrial = async (plan) => {
+    setDevTrialLoading(plan);
+    setBillingMsg(null);
+    try {
+      const res = await api.billing.startDevTrial({ plan, billingCycle: 'monthly' });
+      if (res?.success) {
+        await refreshUser();
+        setBillingMsg(
+          `${plan === 'elite' ? 'Elite' : 'Pro'} trial started — backtest and idea generation unlocked.`,
+        );
+      } else {
+        setBillingMsg(res?.error || 'Dev trial failed.');
+      }
+    } catch (err) {
+      setBillingMsg(err?.error || 'Dev trial failed.');
+    } finally {
+      setDevTrialLoading(null);
     }
   };
 
@@ -178,25 +209,6 @@ const Settings = () => {
   const formatLabel = (key) => {
     const result = key.replace(/([A-Z])/g, ' $1');
     return result.charAt(0).toUpperCase() + result.slice(1);
-  };
-
-  const saveAlertRule = async (rule) => {
-    try {
-      const res = await api.alerts.updateRule(rule.rule_key, {
-        enabled: rule.enabled,
-        threshold: rule.threshold,
-        cooldown_sec: rule.cooldown_sec,
-        channel_in_app: rule.channel_in_app,
-        channel_email: rule.channel_email,
-        channel_push: rule.channel_push,
-      });
-      if (res?.success) {
-        setSaveMsg('Alert preferences saved.');
-        setTimeout(() => setSaveMsg(null), 2500);
-      }
-    } catch {
-      setSaveMsg('Could not save alert preferences.');
-    }
   };
 
   const Toggle = ({ active, onClick, label }) => (
@@ -253,6 +265,14 @@ const Settings = () => {
                       {user?.subscription_status && user.subscription_status !== 'none'
                         ? ` · ${user.subscription_status}`
                         : ''}
+                      {user?.trial_ends_at && user.subscription_status === 'trialing' && (
+                        <>
+                          <br />
+                          <span className="text-xs">
+                            Trial ends {new Date(user.trial_ends_at).toLocaleDateString()}
+                          </span>
+                        </>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -271,6 +291,65 @@ const Settings = () => {
                   </button>
                 </div>
               </div>
+
+              <div className="rounded-xl border border-border bg-background/30 p-4 space-y-2">
+                <p className="text-xs font-bold uppercase tracking-wider text-text-muted">
+                  Your entitlements
+                </p>
+                <ul className="text-xs text-text-muted space-y-1">
+                  <li>
+                    Idea generation:{' '}
+                    <span className={canGenerateIdeas ? 'text-emerald-400 font-bold' : 'text-amber-300'}>
+                      {canGenerateIdeas ? 'Unlocked' : 'Pro required'}
+                    </span>
+                  </li>
+                  <li>
+                    Backtest lab:{' '}
+                    <span className={canRunBacktest ? 'text-emerald-400 font-bold' : 'text-amber-300'}>
+                      {canRunBacktest ? 'Unlocked' : 'Pro required'}
+                    </span>
+                  </li>
+                  {paid && capabilities.length > 0 && (
+                    <li className="text-[10px] pt-1 font-mono opacity-70">
+                      {capabilities.join(' · ')}
+                    </li>
+                  )}
+                </ul>
+              </div>
+
+              {billingMsg && (
+                <p className="text-sm text-emerald-400 border border-emerald-500/30 bg-emerald-500/10 rounded-lg px-3 py-2">
+                  {billingMsg}
+                </p>
+              )}
+
+              {isDev && !paid && (
+                <div className="rounded-xl border border-dashed border-primary/40 p-4 space-y-2">
+                  <p className="text-xs font-bold text-primary">Local dev — trial without Stripe</p>
+                  <p className="text-xs text-text-muted">
+                    Unlocks Pro gates for backtest and idea generation. No card charge.
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      disabled={devTrialLoading === 'pro'}
+                      onClick={() => startDevTrial('pro')}
+                      className="btn-ghost text-xs px-3 py-2 border border-border"
+                    >
+                      {devTrialLoading === 'pro' ? 'Starting…' : 'Start Pro trial'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={devTrialLoading === 'elite'}
+                      onClick={() => startDevTrial('elite')}
+                      className="btn-ghost text-xs px-3 py-2 border border-border"
+                    >
+                      {devTrialLoading === 'elite' ? 'Starting…' : 'Start Elite trial'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <p className="text-sm text-text-muted border-t border-border pt-4">
                 Use <strong className="text-text-main">Platform guide</strong> for workflows,
                 what empty screens mean (Ideas, Economy, Backtest), and data-source health.
@@ -280,7 +359,9 @@ const Settings = () => {
 
           {tab === 'trading' && (
             <div className="space-y-8">
-              <section>
+              <WatchlistPanel />
+
+              <section className="border-t border-border pt-8">
                 <h2 className="font-semibold text-text-main flex items-center gap-2 mb-4">
                   <Shield size={18} className="text-emerald-500" />
                   Risk parameters
@@ -380,7 +461,8 @@ const Settings = () => {
                   Analysis modules
                 </h2>
                 <p className="text-xs text-text-muted mb-3">
-                  Toggle modules used when scoring ideas (saved locally).
+                  Toggle modules sent with chart analysis requests (saved locally). Disabled modules
+                  are omitted from the technical payload and lower confidence accordingly.
                 </p>
                 <div className="max-w-xl">
                   {Object.entries(engineModules).map(([key, isActive]) => (
@@ -394,48 +476,19 @@ const Settings = () => {
                 </div>
               </section>
 
-              <section>
-                <h2 className="font-semibold text-text-main flex items-center gap-2 mb-2">
-                  <Bell size={18} className="text-primary" />
-                  Alerts preferences
-                </h2>
-                <p className="text-xs text-text-muted mb-3">
-                  Manage in-app/email/push alert channels and thresholds.
-                </p>
-                <div className="space-y-2">
-                  {alertRules.map((rule) => (
-                    <div key={rule.id} className="rounded-lg border border-border p-3">
-                      <div className="flex items-center justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold">{rule.rule_key}</p>
-                          <p className="text-xs text-text-muted">
-                            cooldown {rule.cooldown_sec}s · threshold {rule.threshold ?? 'n/a'}
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          className="btn-ghost text-xs px-3 py-1"
-                          onClick={() =>
-                            setAlertRules((prev) =>
-                              prev.map((x) =>
-                                x.id === rule.id ? { ...x, enabled: !x.enabled } : x,
-                              ),
-                            )
-                          }
-                        >
-                          {rule.enabled ? 'Enabled' : 'Disabled'}
-                        </button>
-                      </div>
-                      <button
-                        type="button"
-                        className="btn-primary text-xs px-3 py-1 mt-2"
-                        onClick={() => saveAlertRule(rule)}
-                      >
-                        Save rule
-                      </button>
-                    </div>
-                  ))}
-                </div>
+              <section className="border-t border-border pt-8">
+                <AlertsPanel onMessage={showAlertMessage} />
+                {alertPanelMsg && (
+                  <p
+                    className={`text-sm mt-3 rounded-lg px-3 py-2 ${
+                      alertPanelMsg.isError
+                        ? 'text-red-400 border border-red-500/30 bg-red-500/10'
+                        : 'text-emerald-400 border border-emerald-500/30 bg-emerald-500/10'
+                    }`}
+                  >
+                    {alertPanelMsg.text}
+                  </p>
+                )}
               </section>
 
               <button
@@ -497,6 +550,8 @@ const Settings = () => {
               )}
             </section>
           )}
+
+          {tab === 'data' && <DataFeedsPanel />}
 
           {tab === 'guide' && <PlatformGuide />}
 

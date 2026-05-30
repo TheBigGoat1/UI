@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { query } from "../db.js";
+import { cached } from "../services/cache.js";
 import {
   fetchAllNews,
   fetchAllNewsDetailed,
@@ -234,10 +235,22 @@ router.get("/search", async (req, res) => {
 
 router.get("/asset/:symbol", async (req, res) => {
   try {
-    const asset = req.params.symbol;
-    const articles = await fetchAllNews({ asset, limit: 30 });
-    await upsertArticles(articles);
-    res.json({ success: true, data: articles.map(mapLiveArticle) });
+    const asset = String(req.params.symbol || "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "");
+    const limit = Math.min(Number(req.query.limit) || 30, 60);
+
+    const data = await cached(`news:asset:${asset}:${limit}`, 90000, async () => {
+      const articles = await fetchAllNews({ asset, limit });
+      await upsertArticles(articles);
+      return articles.map(mapLiveArticle);
+    });
+
+    res.json({
+      success: true,
+      data,
+      meta: { asset, scoped: true, count: data.length },
+    });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });
   }

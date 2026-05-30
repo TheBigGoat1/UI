@@ -24,40 +24,49 @@ router.get("/prices", async (_req, res) => {
 });
 
 router.get("/history/:symbol", async (req, res) => {
+  const { symbol } = req.params;
+  const interval = req.query.interval || "1day";
+  const period = req.query.period || "1M";
+
   try {
-    const { symbol } = req.params;
-    const interval = req.query.interval || "1day";
-    const period = req.query.period || "1M";
     let bars = [];
     let synthetic = false;
     let source = "model";
+
     try {
       const loaded = await getHistory(symbol, interval, period);
-      bars = loaded.bars || [];
-      synthetic = Boolean(loaded.synthetic);
-      source = loaded.source || (synthetic ? "model" : "live");
+      bars = Array.isArray(loaded?.bars) ? loaded.bars : [];
+      synthetic = Boolean(loaded?.synthetic);
+      source = loaded?.source || (synthetic ? "model" : "live");
     } catch (error) {
       console.warn("[market] history fetch error:", symbol, error.message);
     }
+
     if (bars.length < 2) {
       bars = getSyntheticHistory(symbol, interval, period);
       synthetic = true;
       source = "model";
     }
-    res.json({
+
+    return res.json({
       success: true,
       data: bars,
       meta: { count: bars.length, symbol, interval, period, synthetic, source },
     });
   } catch (error) {
-    const { symbol } = req.params;
-    const interval = req.query.interval || "1day";
-    const period = req.query.period || "1M";
+    console.warn("[market] history route fallback:", symbol, error.message);
     const bars = getSyntheticHistory(symbol, interval, period);
-    res.json({
+    return res.json({
       success: true,
       data: bars,
-      meta: { count: bars.length, symbol, interval, period, synthetic: true },
+      meta: {
+        count: bars.length,
+        symbol,
+        interval,
+        period,
+        synthetic: true,
+        source: "model",
+      },
     });
   }
 });

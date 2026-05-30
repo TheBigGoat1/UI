@@ -6,12 +6,37 @@ import {
   parseCsvTrades,
   toTradeInsert,
 } from "../services/brokers/connectors.js";
+import { insertTradeDeduped } from "../services/tradeDedup.js";
 
 const router = Router();
 router.use(resolveUser);
 
 const mask = (value = "") =>
   value.length > 8 ? `${value.slice(0, 4)}...${value.slice(-4)}` : value;
+
+router.get("/sync-runs", async (req, res) => {
+  const { rows } = await query(
+    `SELECT id, exchange, status, inserted_trades, error_message, started_at, completed_at
+     FROM sync_runs
+     WHERE user_id = $1
+     ORDER BY COALESCE(completed_at, started_at) DESC
+     LIMIT 20`,
+    [req.user.id],
+  );
+
+  res.json({
+    success: true,
+    data: rows.map((row) => ({
+      id: row.id,
+      exchangeId: row.exchange,
+      status: row.status,
+      insertedTrades: row.inserted_trades,
+      errorMessage: row.error_message,
+      startedAt: row.started_at,
+      completedAt: row.completed_at,
+    })),
+  });
+});
 
 router.get("/", async (req, res) => {
   const { rows } = await query(
@@ -95,36 +120,45 @@ router.post("/:exchangeId/sync", async (req, res) => {
       ? parseCsvTrades(req.body?.csv || "", "csv")
       : await fetchBrokerTrades(exchangeId);
 
+  let inserted = 0;
+  let skipped = 0;
+  const batchSeen = new Set();
+
   for (const rawTrade of importedTrades) {
     const trade = toTradeInsert(rawTrade, exchangeId);
-    await query(
-      `INSERT INTO trades (
-         user_id, exchange, symbol, side, pnl, r_multiple, strategy, emotion, mistakes, status, opened_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())`,
-      [userId, exchangeId, trade.symbol, trade.side, trade.pnl, trade.pnl / 50, trade.strategy, trade.emotion, trade.mistakes, trade.status, trade.opened_at],
-    );
+    const result = await insertTradeDeduped(query, userId, trade, batchSeen);
+    if (result.inserted) inserted += 1;
+    else skipped += 1;
   }
 
   await query(
     `INSERT INTO sync_runs (user_id, exchange, status, inserted_trades, completed_at)
      VALUES ($1,$2,'success',$3,NOW())`,
-    [userId, exchangeId, importedTrades.length],
+    [userId, exchangeId, inserted],
   );
 
   await query(
     `INSERT INTO notifications (user_id, type, title, body)
      VALUES ($1, 'success', 'Sync completed', $2)`,
-    [userId, `${exchangeId} synced ${importedTrades.length} trades`],
+    [
+      userId,
+      skipped > 0
+        ? `${exchangeId} synced ${inserted} new trades (${skipped} duplicates skipped)`
+        : `${exchangeId} synced ${inserted} trades`,
+    ],
   );
 
   res.json({
     success: true,
     data: {
-      tradesAdded: importedTrades.length,
+      tradesAdded: inserted,
+      skipped,
       source: exchangeId,
       note:
-        importedTrades.length === 0
-          ? "No new trades found from connector. Verify API scopes or import CSV."
+        inserted === 0
+          ? skipped > 0
+            ? "All trades were already in your journal — no duplicates added."
+            : "No new trades found from connector. Verify API scopes or import CSV."
           : undefined,
     },
   });

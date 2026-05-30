@@ -20,14 +20,9 @@ import {
   gradeLabel,
   GRADE_STYLES,
 } from "../../utils/ideaDisplay.js";
+import { THESIS_TAGS } from "../../utils/thesisTags.js";
 
-const THESIS_TAGS = [
-  { id: "plan", label: "Following the plan" },
-  { id: "fomo", label: "FOMO / impulse" },
-  { id: "revenge", label: "Revenge trade" },
-];
-
-const IdeaDetailModal = ({ isOpen, onClose, idea, onTradeClosed }) => {
+const IdeaDetailModal = ({ isOpen, onClose, idea, onTradeClosed, onAccepted }) => {
   const [lastPrice, setLastPrice] = useState(null);
   const [interval, setInterval] = useState(DEFAULT_CHART.interval);
   const [period, setPeriod] = useState(DEFAULT_CHART.period);
@@ -37,6 +32,7 @@ const IdeaDetailModal = ({ isOpen, onClose, idea, onTradeClosed }) => {
   const [tradeNotice, setTradeNotice] = useState(null);
   const [planAgreed, setPlanAgreed] = useState(false);
   const [thesisTag, setThesisTag] = useState("plan");
+  const [closeThesisTag, setCloseThesisTag] = useState("plan");
   const [sizePreview, setSizePreview] = useState(null);
   const [setupStats, setSetupStats] = useState(null);
 
@@ -46,6 +42,7 @@ const IdeaDetailModal = ({ isOpen, onClose, idea, onTradeClosed }) => {
     setTradeNotice(null);
     setPlanAgreed(false);
     setThesisTag("plan");
+    setCloseThesisTag("plan");
     const posId = idea.trade_id || idea.position_id;
     if (posId || idea.position_status === "open" || idea.status === "open") {
       setActiveTradeId(posId);
@@ -136,7 +133,10 @@ const IdeaDetailModal = ({ isOpen, onClose, idea, onTradeClosed }) => {
           setTradeStatus("active");
           if (res.data.sizePreview?.note) {
             setTradeNotice(res.data.sizePreview.note);
+          } else {
+            setTradeNotice("Trade accepted — tracked in Journal and Open trades.");
           }
+          onAccepted?.();
         } else if (res?.status === 409 || res?.data?.id) {
           const pid = res.data?.id || res.data?.positionId;
           if (pid) setActiveTradeId(pid);
@@ -149,7 +149,7 @@ const IdeaDetailModal = ({ isOpen, onClose, idea, onTradeClosed }) => {
         const currentPrice = Number(
           lastPrice ?? idea.entry_price ?? idea.entryPrice ?? 0,
         );
-        const res = await api.trades.close(activeTradeId, currentPrice, planAgreed);
+        const res = await api.trades.close(activeTradeId, currentPrice, planAgreed, closeThesisTag);
 
         if (res?.success) {
           setTradeStatus("closed");
@@ -353,7 +353,7 @@ const IdeaDetailModal = ({ isOpen, onClose, idea, onTradeClosed }) => {
           )}
 
           {activeTradeId && tradeStatus === "active" && (
-            <div className="accept-plan-panel">
+            <div className="accept-plan-panel space-y-3">
               <label className="flex items-center gap-2 cursor-pointer text-xs text-text-muted">
                 <input
                   type="checkbox"
@@ -362,6 +362,27 @@ const IdeaDetailModal = ({ isOpen, onClose, idea, onTradeClosed }) => {
                 />
                 I followed the plan (invalidation respected)
               </label>
+              <div>
+                <span className="text-[10px] uppercase text-text-muted font-bold">
+                  Mindset at close
+                </span>
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {THESIS_TAGS.map((t) => (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setCloseThesisTag(t.id)}
+                      className={`text-[10px] px-2 py-1 rounded border ${
+                        closeThesisTag === t.id
+                          ? "border-primary bg-primary/15 text-primary"
+                          : "border-border text-text-muted"
+                      }`}
+                    >
+                      {t.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
         </div>

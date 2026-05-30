@@ -1,5 +1,6 @@
 import { env, envBool, ENV_FILE } from "../config/env.js";
 import { getConfiguredNewsSources } from "./newsProviders.js";
+import { probeRedis } from "./redis.js";
 
 async function probeNewsApi() {
   const apiKey = env("NEWSAPI_API_KEY");
@@ -118,18 +119,23 @@ async function probeTwelve() {
 
 /** Live status for all integrations read from .env */
 export async function getIntegrationsHealth() {
-  const [newsApi, newsData, coindesk, cryptopanic, twelveData] = await Promise.all([
+  const [newsApi, newsData, coindesk, cryptopanic, twelveData, redis] = await Promise.all([
     probeNewsApi(),
     probeNewsData(),
     probeCoinDesk(),
     probeCryptoPanic(),
     probeTwelve(),
+    probeRedis(),
   ]);
 
   return {
     envFile: ENV_FILE,
     configured: getConfiguredNewsSources(),
     database: { status: "required", configured: true },
+    redis: {
+      ...redis,
+      note: redis.note || "REDIS_URL — reduces Twelve Data / Yahoo rate limits",
+    },
     binance: { status: "ok", configured: true, note: "Public API — no key" },
     yahoo: { status: "ok", configured: true, note: "FX/commodity fallback" },
     twelveData: {

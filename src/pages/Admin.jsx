@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Users, Shield, Search, Save, UserPlus, Trash2, Activity, ShieldAlert } from 'lucide-react';
+import { Users, Shield, Search, Save, UserPlus, Trash2, Activity, ShieldAlert, RefreshCw, Download } from 'lucide-react';
 import PageHeader from '../components/layout/PageHeader';
 import DashSelect from '../components/ui/DashSelect.jsx';
+import PlatformHealthBar from '../components/admin/PlatformHealthBar.jsx';
 import { api } from '../services/api/api.js';
 
 const Admin = () => {
@@ -20,11 +21,16 @@ const Admin = () => {
   const [errorSummary, setErrorSummary] = useState([]);
   const [jobHealth, setJobHealth] = useState([]);
   const [incidents, setIncidents] = useState([]);
+  const [refreshing, setRefreshing] = useState(false);
+  const [exporting, setExporting] = useState(false);
+  const [exportingAudit, setExportingAudit] = useState(false);
+  const [auditLogs, setAuditLogs] = useState([]);
 
   const load = async () => {
     setError('');
+    setRefreshing(true);
     try {
-      const [o, u, a, p, es, jobs, inc] = await Promise.all([
+      const [o, u, a, p, es, jobs, inc, audit] = await Promise.all([
         api.admin.getOverview(),
         api.admin.getUsers({ q, tier, status }),
         api.admin.getAdmins(),
@@ -32,6 +38,7 @@ const Admin = () => {
         api.admin.getErrorSummary(),
         api.admin.getJobHealth(),
         api.admin.getIncidents(),
+        api.admin.getAudit(),
       ]);
       if (o?.success) setOverview(o.data);
       if (u?.success) setUsers(u.data || []);
@@ -40,6 +47,7 @@ const Admin = () => {
       if (es?.success) setErrorSummary(es.data || []);
       if (jobs?.success) setJobHealth(jobs.data || []);
       if (inc?.success) setIncidents(inc.data || []);
+      if (audit?.success) setAuditLogs(audit.data || []);
       if (
         o?.success === false ||
         u?.success === false ||
@@ -47,9 +55,10 @@ const Admin = () => {
         p?.success === false ||
         es?.success === false ||
         jobs?.success === false ||
-        inc?.success === false
+        inc?.success === false ||
+        audit?.success === false
       ) {
-        setError(o?.error || u?.error || a?.error || p?.error || es?.error || jobs?.error || inc?.error || 'Could not load admin data.');
+        setError(o?.error || u?.error || a?.error || p?.error || es?.error || jobs?.error || inc?.error || audit?.error || 'Could not load admin data.');
       }
     } catch (e) {
       setError(e.error || 'Admin access required or API offline.');
@@ -59,6 +68,9 @@ const Admin = () => {
       setErrorSummary([]);
       setJobHealth([]);
       setIncidents([]);
+      setAuditLogs([]);
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -136,13 +148,52 @@ const Admin = () => {
     }
   };
 
+  const exportUsers = async () => {
+    setExporting(true);
+    setError('');
+    try {
+      const res = await api.admin.exportUsersCsv({ q, tier, status });
+      if (!res?.success) setError(res?.error || 'Could not export users.');
+    } catch (e) {
+      setError(e?.error || 'Could not export users.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const exportAudit = async () => {
+    setExportingAudit(true);
+    setError('');
+    try {
+      const res = await api.admin.exportAuditCsv();
+      if (!res?.success) setError(res?.error || 'Could not export audit log.');
+    } catch (e) {
+      setError(e?.error || 'Could not export audit log.');
+    } finally {
+      setExportingAudit(false);
+    }
+  };
+
   return (
     <div className="dash-page max-w-7xl mx-auto space-y-6 pb-10">
       <PageHeader
         icon={Shield}
         title="Admin Control Center"
-        description="Manage users, subscriptions, and plan status."
+        description="Manage users, subscriptions, and platform health."
+        action={
+          <button
+            type="button"
+            onClick={load}
+            disabled={refreshing}
+            className="btn-ghost text-sm px-4 py-2 border border-border inline-flex items-center gap-2"
+          >
+            <RefreshCw size={16} className={refreshing ? 'animate-spin' : ''} />
+            Refresh all
+          </button>
+        }
       />
+
+      <PlatformHealthBar />
 
       {error && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 text-red-200 px-4 py-3 text-sm">
@@ -182,14 +233,22 @@ const Admin = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {providerSla.slice(0, 8).map((r, idx) => (
-                    <tr key={`${r.provider}-${idx}`} className="border-b border-border/40">
-                      <td className="px-3 py-2">{r.provider}</td>
-                      <td className="px-3 py-2">{r.status}</td>
-                      <td className="px-3 py-2">{r.latency_ms ?? '—'}ms</td>
-                      <td className="px-3 py-2">{r.error_rate ?? 0}</td>
+                  {providerSla.length ? (
+                    providerSla.slice(0, 8).map((r, idx) => (
+                      <tr key={`${r.provider}-${idx}`} className="border-b border-border/40">
+                        <td className="px-3 py-2">{r.provider}</td>
+                        <td className="px-3 py-2">{r.status}</td>
+                        <td className="px-3 py-2">{r.latency_ms ?? '—'}ms</td>
+                        <td className="px-3 py-2">{r.error_rate ?? 0}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={4} className="px-3 py-6 text-center text-text-muted text-sm">
+                        No provider SLA samples yet.
+                      </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>
@@ -209,13 +268,21 @@ const Admin = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {errorSummary.slice(0, 8).map((r, idx) => (
-                    <tr key={`${r.level}-${idx}`} className="border-b border-border/40">
-                      <td className="px-3 py-2">{r.level}</td>
-                      <td className="px-3 py-2">{r.message}</td>
-                      <td className="px-3 py-2">{r.count}</td>
+                  {errorSummary.length ? (
+                    errorSummary.slice(0, 8).map((r, idx) => (
+                      <tr key={`${r.level}-${idx}`} className="border-b border-border/40">
+                        <td className="px-3 py-2">{r.level}</td>
+                        <td className="px-3 py-2">{r.message}</td>
+                        <td className="px-3 py-2">{r.count}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={3} className="px-3 py-6 text-center text-text-muted text-sm">
+                        No aggregated errors in system logs.
+                      </td>
                     </tr>
-                  ))}
+                  )}
                 </tbody>
               </table>
             </div>
@@ -417,6 +484,15 @@ const Admin = () => {
             <button type="button" className="btn-primary px-4 py-2 text-sm" onClick={load}>
               Refresh
             </button>
+            <button
+              type="button"
+              disabled={exporting}
+              onClick={exportUsers}
+              className="btn-ghost px-4 py-2 text-sm border border-border inline-flex items-center gap-2"
+            >
+              <Download size={14} />
+              {exporting ? 'Exporting…' : 'Export CSV'}
+            </button>
           </div>
 
           <div className="overflow-x-auto">
@@ -501,6 +577,68 @@ const Admin = () => {
               </tbody>
             </table>
           </div>
+        </div>
+      </div>
+
+      <div className="dash-panel overflow-hidden">
+        <div className="px-4 py-3 border-b border-border flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="font-semibold text-text-main flex items-center gap-2">
+              <ShieldAlert size={18} className="text-primary" />
+              System audit log
+            </h2>
+            <p className="text-xs text-text-muted mt-1">Recent platform events (last 300 loaded).</p>
+          </div>
+          <button
+            type="button"
+            disabled={exportingAudit}
+            onClick={exportAudit}
+            className="btn-ghost px-4 py-2 text-sm border border-border inline-flex items-center gap-2"
+          >
+            <Download size={14} />
+            {exportingAudit ? 'Exporting…' : 'Export audit CSV'}
+          </button>
+        </div>
+        <div className="overflow-x-auto max-h-80 overflow-y-auto custom-scrollbar">
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 bg-surface/95 backdrop-blur">
+              <tr className="text-left text-text-muted border-b border-border">
+                <th className="px-3 py-2 font-semibold">Time</th>
+                <th className="px-3 py-2 font-semibold">Level</th>
+                <th className="px-3 py-2 font-semibold">Message</th>
+              </tr>
+            </thead>
+            <tbody>
+              {auditLogs.slice(0, 50).map((row) => (
+                <tr key={row.id} className="border-b border-border/40 hover:bg-background/30">
+                  <td className="px-3 py-2 text-text-muted whitespace-nowrap font-mono">
+                    {row.created_at ? new Date(row.created_at).toLocaleString() : '—'}
+                  </td>
+                  <td className="px-3 py-2">
+                    <span
+                      className={`font-bold uppercase ${
+                        row.level === 'error'
+                          ? 'text-red-400'
+                          : row.level === 'warn'
+                            ? 'text-amber-300'
+                            : 'text-text-muted'
+                      }`}
+                    >
+                      {row.level || 'info'}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-text-main">{row.message}</td>
+                </tr>
+              ))}
+              {auditLogs.length === 0 && (
+                <tr>
+                  <td className="px-3 py-6 text-center text-text-muted" colSpan={3}>
+                    No audit entries yet.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>

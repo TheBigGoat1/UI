@@ -17,6 +17,7 @@ import {
   revokePaidAccess,
   startLocalDevTrial,
   syncUserSubscription,
+  userCapabilities,
 } from "../services/subscriptionAccess.js";
 
 const router = Router();
@@ -189,10 +190,25 @@ router.post("/portal", requireAuth, async (req, res) => {
   }
 });
 
+router.get("/health", (_req, res) => {
+  res.json({
+    success: true,
+    data: {
+      stripe_configured: Boolean(stripe),
+      webhook_configured: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
+      dev_trial_enabled:
+        process.env.NODE_ENV !== "production" || process.env.ALLOW_DEV_BILLING === "true",
+      free_backtest_open:
+        process.env.NODE_ENV !== "production" || process.env.ALLOW_FREE_BACKTEST === "true",
+    },
+  });
+});
+
 router.get("/status", requireAuth, async (req, res) => {
   let user = await loadUser(req.user.id);
   user = await syncUserSubscription(user);
   const access = accessSnapshot(user);
+  const caps = userCapabilities(user);
 
   res.json({
     success: true,
@@ -206,6 +222,7 @@ router.get("/status", requireAuth, async (req, res) => {
       has_access: access.has_access,
       payment_required: access.payment_required,
       message: access.message,
+      capabilities: caps.available,
     },
   });
 });

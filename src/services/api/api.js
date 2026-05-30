@@ -1,5 +1,6 @@
 import axios from 'axios';
 import { getToken, clearToken } from '../auth/authStorage.js';
+import { engineModulesQueryValue } from '../../utils/engineModules.js';
 
 /** In dev, use Vite proxy (/api → :3001) so the UI always reaches the API on the same origin. */
 const API_BASE_URL =
@@ -80,8 +81,11 @@ apiClient.interceptors.response.use(
   },
 );
 
-const request = (method, url, data = null, params = null, options = {}) =>
-  apiClient({ method, url, data, params, ...options });
+const request = (method, url, data = null, params = null, options = {}) => {
+  const mutating = ['POST', 'PUT', 'PATCH'].includes(String(method).toUpperCase());
+  const payload = data === null && mutating ? {} : data;
+  return apiClient({ method, url, data: payload, params, ...options });
+};
 
 /** Never throw — returns { success: false } on failure */
 async function safeRequest(method, url, data = null, params = null, options = {}) {
@@ -117,6 +121,7 @@ export const api = {
       request('GET', '/billing/session', null, { session_id: sessionId }),
     portal: () => request('POST', '/billing/portal'),
     status: () => request('GET', '/billing/status'),
+    health: () => request('GET', '/billing/health'),
   },
 
   market: {
@@ -157,12 +162,18 @@ export const api = {
   },
 
   trader: {
+    getWatchlist: () => safeRequest('GET', '/trader/watchlist'),
+    ping: () => safeRequest('GET', '/trader/ping'),
+    addToWatchlist: (symbol) => safeRequest('POST', '/trader/watchlist', { symbol }),
+    removeFromWatchlist: (symbol) => safeRequest('DELETE', `/trader/watchlist/${symbol}`),
     getProfile: () => request('GET', '/trader/profile'),
     saveProfile: (payload) => request('PUT', '/trader/profile', payload),
-    getHeat: () => request('GET', '/trader/heat'),
-    getScorecard: () => request('GET', '/trader/scorecard'),
-    getDebrief: () => request('GET', '/trader/debrief'),
-    getSetupStats: (symbol) => request('GET', `/trader/setup-stats/${symbol}`),
+    getHeat: () => safeRequest('GET', '/trader/heat'),
+    getScorecard: () => safeRequest('GET', '/trader/scorecard'),
+    getDebrief: () => safeRequest('GET', '/trader/debrief'),
+    getSetupStats: (symbol) => safeRequest('GET', `/trader/setup-stats/${symbol}`),
+    getEventGate: (symbol) =>
+      safeRequest('GET', '/trader/event-gate', null, symbol ? { symbol } : {}),
     sizePreview: (idea_id) => request('POST', '/trader/size-preview', { idea_id }),
   },
 
@@ -194,8 +205,8 @@ export const api = {
         thesis_tag: options.thesis_tag,
         risk_percent_used: options.risk_percent_used,
       }),
-    close: (id, exit_price, plan_followed) =>
-      request('POST', `/trades/${id}/close`, { exit_price, plan_followed }),
+    close: (id, exit_price, plan_followed, thesis_tag) =>
+      request('POST', `/trades/${id}/close`, { exit_price, plan_followed, thesis_tag }),
     flattenAll: () => request('POST', '/trades/flatten-all'),
   },
 
@@ -203,16 +214,19 @@ export const api = {
     getRiskEnvironment: () => request('GET', '/analysis/risk-environment'),
     getFundamental: (symbol) => request('GET', `/analysis/fundamental/${symbol}`),
     getAsset: async (symbol, interval = '4h', period = '1M') => {
+      const modules = engineModulesQueryValue();
       try {
         const res = await request('GET', `/analysis/asset/${symbol}`, null, {
           interval,
           period,
+          modules,
         });
         if (res?.success && res.data?.technical?.modules) return res;
 
         const legacy = await request('GET', `/analysis/technical/${symbol}`, null, {
           interval,
           period,
+          modules,
         });
         if (legacy?.success && legacy.data?.modules) {
           return {
@@ -277,15 +291,20 @@ export const api = {
   system: {
     getHealth: () => request('GET', '/health'),
     getDataSources: () => request('GET', '/data-sources'),
+    getNotifications: () => safeRequest('GET', '/notifications'),
+    markNotificationRead: (id) => safeRequest('PATCH', `/notifications/${id}/read`),
+    markAllNotificationsRead: () => safeRequest('PATCH', '/notifications/read-all'),
   },
 
   journal: {
     getTrades: () => safeRequest('GET', '/journal/trades'),
     createTrade: (data) => safeRequest('POST', '/journal/trades', data),
+    importCsv: (csv) => safeRequest('POST', '/journal/trades/import', { csv }),
   },
 
   connections: {
     list: () => request('GET', '/connections'),
+    syncRuns: () => request('GET', '/connections/sync-runs'),
     connect: (data) => request('POST', '/connections', data),
     sync: (exchangeId) => request('POST', `/connections/${exchangeId}/sync`),
   },
@@ -296,9 +315,12 @@ export const api = {
   },
 
   alerts: {
+    health: () => request('GET', '/alerts/health'),
     getRules: () => request('GET', '/alerts/rules'),
     updateRule: (ruleKey, payload) => request('PUT', `/alerts/rules/${ruleKey}`, payload),
+    testEmail: () => request('POST', '/alerts/test-email'),
     getEvents: () => request('GET', '/alerts/events'),
+    trigger: (payload) => request('POST', '/alerts/trigger', payload),
   },
 
   admin: {
@@ -319,6 +341,48 @@ export const api = {
     createIncident: (payload) => request('POST', '/admin/incidents', payload),
     updateIncident: (id, payload) => request('PATCH', `/admin/incidents/${id}`, payload),
     getAudit: () => request('GET', '/admin/audit'),
+    exportUsersCsv: async (params = {}) => {
+      try {
+        const token = getToken();
+        const filtered = Object.fromEntries(
+          Object.entries(params).filter(([, v]) => v != null && v !== '' && v !== 'all'),
+        );
+        const qs = new URLSearchParams(filtered).toString();
+        const res = await fetch(`${API_BASE_URL}/admin/users/export${qs ? `?${qs}` : ''}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) return { success: false, error: 'Export failed' };
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `insidr-users-${new Date().toISOString().slice(0, 10)}.csv`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+        return { success: true };
+      } catch (e) {
+        return { success: false, error: e?.message || 'Export failed' };
+      }
+    },
+    exportAuditCsv: async () => {
+      try {
+        const token = getToken();
+        const res = await fetch(`${API_BASE_URL}/admin/audit/export`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {},
+        });
+        if (!res.ok) return { success: false, error: 'Export failed' };
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = url;
+        anchor.download = `insidr-audit-${new Date().toISOString().slice(0, 10)}.csv`;
+        anchor.click();
+        URL.revokeObjectURL(url);
+        return { success: true };
+      } catch (e) {
+        return { success: false, error: e?.message || 'Export failed' };
+      }
+    },
   },
 
   portfolio: {

@@ -2,70 +2,89 @@ import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import PageHeader from '../components/layout/PageHeader';
 import AddTradeModal from '../components/journal/AddTradeModal';
+import ImportTradesModal from '../components/journal/ImportTradesModal';
+import EquityCurve from '../components/journal/EquityCurve';
 import TradeChart from '../components/TradeChart';
 import { api } from '../services/api/api.js';
 import { systemStorage } from '../services/tradingSystem/storage';
+import { buildJournalCsv, downloadCsv } from '../utils/exportCsv.js';
 import { DEFAULT_CHART } from '../utils/chartConfig.js';
 import WeeklyDebriefPanel from '../components/brief/WeeklyDebriefPanel';
 import {
-  BookOpen, Plus, Search, RefreshCw, Download, Link as LinkIcon,
+  BookOpen, Plus, Search, RefreshCw, Download, Link as LinkIcon, FileUp,
   ArrowUpRight, ArrowDownRight, Brain, Calendar as CalendarIcon,
   BarChart2, LayoutDashboard, TrendingUp, Target,
 } from 'lucide-react';
 
-const OverviewTab = ({ trades, metrics }) => {
-  const sorted = [...trades].sort(
-    (a, b) => new Date(a.entryDate || 0) - new Date(b.entryDate || 0),
-  );
-  let equity = 0;
-  const curve = sorted.map((t) => {
-    equity += parseFloat(t.pnl) || 0;
-    return { equity, date: t.entryDate };
-  });
-  const maxEquity = Math.max(...curve.map((c) => c.equity), 0);
-  const minEquity = Math.min(...curve.map((c) => c.equity), 0);
-  const range = maxEquity - minEquity || 1;
+const OverviewTab = ({ trades, metrics }) => (
+  <div className="space-y-6">
+    <WeeklyDebriefPanel />
+    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="dash-stat p-4">
+        <p className="dash-stat__label">Net P&L</p>
+        <p className={`dash-stat__value text-xl ${metrics.totalPnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
+          ${Math.abs(metrics.totalPnl).toFixed(2)}
+        </p>
+      </div>
+      <div className="dash-stat p-4">
+        <p className="dash-stat__label">Win rate</p>
+        <p className="dash-stat__value text-xl">{metrics.winRate.toFixed(1)}%</p>
+      </div>
+      <div className="dash-stat p-4">
+        <p className="dash-stat__label">Profit factor</p>
+        <p className="dash-stat__value text-xl text-primary">{metrics.profitFactor.toFixed(2)}</p>
+      </div>
+      <div className="dash-stat p-4">
+        <p className="dash-stat__label">Trades</p>
+        <p className="dash-stat__value text-xl">{metrics.totalTrades}</p>
+      </div>
+    </div>
+    <EquityCurve trades={trades} />
+  </div>
+);
+
+const PsychologyBreakdown = ({ trades }) => {
+  const tags = useMemo(() => {
+    const map = {};
+    trades.forEach((t) => {
+      const key = t.emotion || 'Untagged';
+      if (!map[key]) map[key] = { count: 0, wins: 0, pnl: 0 };
+      map[key].count += 1;
+      map[key].pnl += parseFloat(t.pnl) || 0;
+      if (parseFloat(t.pnl) > 0 || t.status?.toUpperCase() === 'WIN') map[key].wins += 1;
+    });
+    return Object.entries(map).sort((a, b) => b[1].count - a[1].count);
+  }, [trades]);
+
+  if (!tags.length) {
+    return (
+      <p className="text-sm text-text-muted">
+        Tag trades with mindset on accept/close to see psychology vs outcomes.
+      </p>
+    );
+  }
 
   return (
-    <div className="space-y-6">
-      <WeeklyDebriefPanel />
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="dash-stat p-4">
-          <p className="dash-stat__label">Net P&L</p>
-          <p className={`dash-stat__value text-xl ${metrics.totalPnl >= 0 ? 'text-emerald-500' : 'text-red-500'}`}>
-            ${Math.abs(metrics.totalPnl).toFixed(2)}
-          </p>
-        </div>
-        <div className="dash-stat p-4">
-          <p className="dash-stat__label">Win rate</p>
-          <p className="dash-stat__value text-xl">{metrics.winRate.toFixed(1)}%</p>
-        </div>
-        <div className="dash-stat p-4">
-          <p className="dash-stat__label">Profit factor</p>
-          <p className="dash-stat__value text-xl text-primary">{metrics.profitFactor.toFixed(2)}</p>
-        </div>
-        <div className="dash-stat p-4">
-          <p className="dash-stat__label">Trades</p>
-          <p className="dash-stat__value text-xl">{metrics.totalTrades}</p>
-        </div>
-      </div>
-      <div>
-        <h3 className="text-sm font-bold text-text-muted uppercase tracking-wider mb-3">Equity curve</h3>
-        {curve.length < 2 ? (
-          <p className="text-sm text-text-muted">Log trades to build your equity curve.</p>
-        ) : (
-          <div className="dash-equity-chart">
-            {curve.map((point, i) => (
-              <div
-                key={i}
-                className="flex-1 bg-primary/80 rounded-t-sm min-w-[6px] hover:bg-primary transition-colors"
-                style={{ height: `${Math.max(8, ((point.equity - minEquity) / range) * 100)}%` }}
-                title={`$${point.equity.toFixed(2)}`}
-              />
-            ))}
+    <div className="space-y-2">
+      {tags.map(([label, stats]) => {
+        const wr = stats.count ? (stats.wins / stats.count) * 100 : 0;
+        return (
+          <div
+            key={label}
+            className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border px-3 py-2 bg-background/30"
+          >
+            <span className="text-xs font-bold text-text-main flex items-center gap-1.5">
+              <Brain size={12} className="text-primary" /> {label}
+            </span>
+            <span className="text-[10px] text-text-muted font-mono">
+              {stats.count} trades · {wr.toFixed(0)}% win ·{' '}
+              <span className={stats.pnl >= 0 ? 'text-emerald-500' : 'text-red-400'}>
+                {stats.pnl >= 0 ? '+' : ''}${stats.pnl.toFixed(0)}
+              </span>
+            </span>
           </div>
-        )}
-      </div>
+        );
+      })}
     </div>
   );
 };
@@ -128,6 +147,13 @@ const AnalyticsTab = ({ trades, metrics }) => {
           <p className="text-xl font-mono font-bold text-primary">{metrics.profitFactor.toFixed(2)}</p>
         </div>
       </div>
+
+      <div>
+        <h3 className="text-sm font-bold text-text-muted uppercase tracking-wider mb-3">
+          Psychology vs outcomes
+        </h3>
+        <PsychologyBreakdown trades={trades} />
+      </div>
     </div>
   );
 };
@@ -181,6 +207,9 @@ const Journal = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [importMsg, setImportMsg] = useState(null);
   const [saving, setSaving] = useState(false);
   const [metrics, setMetrics] = useState({
     totalPnl: 0, winRate: 0, profitFactor: 0, totalTrades: 0,
@@ -217,6 +246,36 @@ const Journal = () => {
     const profitFactor = grossLoss === 0 ? (grossProfit > 0 ? 99.99 : 0) : grossProfit / grossLoss;
     setMetrics({ totalTrades, winRate: (wins / totalTrades) * 100, totalPnl, profitFactor });
   }, [trades]);
+
+  const handleExportCsv = () => {
+    const rows = buildJournalCsv(trades);
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadCsv(`insidr-journal-${stamp}.csv`, rows);
+  };
+
+  const handleImportCsv = async (csv) => {
+    setImporting(true);
+    try {
+      const res = await api.journal.importCsv(csv);
+      if (res?.success) {
+        const added = res.data?.inserted ?? 0;
+        const skipped = res.data?.skipped ?? 0;
+        setImportMsg(
+          skipped > 0
+            ? `Imported ${added} trade${added === 1 ? '' : 's'} (${skipped} duplicate${skipped === 1 ? '' : 's'} skipped).`
+            : `Imported ${added} trade${added === 1 ? '' : 's'} into your journal.`,
+        );
+        await loadTrades();
+        return { success: true };
+      }
+      return { success: false, error: res?.error || 'Import failed.' };
+    } catch (err) {
+      return { success: false, error: err?.error || 'Import failed.' };
+    } finally {
+      setImporting(false);
+      setTimeout(() => setImportMsg(null), 5000);
+    }
+  };
 
   const handleSaveTrade = async (payload) => {
     setSaving(true);
@@ -260,12 +319,29 @@ const Journal = () => {
             <Link to="/dashboard/connections" className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-sm font-bold text-text-muted hover:text-primary">
               <LinkIcon size={16} /> Sync broker
             </Link>
+            <button
+              type="button"
+              onClick={handleExportCsv}
+              disabled={!trades.length}
+              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-sm font-bold text-text-muted hover:text-text-main disabled:opacity-40"
+            >
+              <Download size={16} /> Export CSV
+            </button>
+            <button type="button" onClick={() => setShowImportModal(true)} className="flex items-center gap-2 px-3 py-2 rounded-lg border border-border text-sm font-bold text-text-muted hover:text-text-main">
+              <FileUp size={16} /> Import CSV
+            </button>
             <button type="button" onClick={() => setShowAddModal(true)} className="btn-primary py-2 px-4 text-sm">
               <Plus size={16} /> Add trade
             </button>
           </div>
         }
       />
+
+      {importMsg && (
+        <p className="text-sm text-emerald-400 border border-emerald-500/30 bg-emerald-500/10 rounded-lg px-4 py-2">
+          {importMsg}
+        </p>
+      )}
 
       <div className="dash-stat-grid">
         <div className="dash-stat">
@@ -398,6 +474,13 @@ const Journal = () => {
         onClose={() => setShowAddModal(false)}
         onSave={handleSaveTrade}
         saving={saving}
+      />
+
+      <ImportTradesModal
+        open={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImport={handleImportCsv}
+        importing={importing}
       />
     </div>
   );

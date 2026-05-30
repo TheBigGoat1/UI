@@ -3,6 +3,7 @@ import { Globe, RefreshCw, AlertTriangle, Sparkles, Calendar } from 'lucide-reac
 import { Link } from 'react-router-dom';
 import PageHeader from '../components/layout/PageHeader';
 import DashSelect from '../components/ui/DashSelect.jsx';
+import RiskRegimeBanner from '../components/macro/RiskRegimeBanner';
 import { api } from '../services/api/api';
 
 const directionLabel = (d) => {
@@ -102,6 +103,8 @@ const Economy = () => {
           </button>
         }
       />
+
+      <RiskRegimeBanner compact />
 
       {error && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 text-red-200 px-4 py-3 text-sm flex items-start gap-2">

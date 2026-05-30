@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
 import { api } from '../services/api/api';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext.jsx';
 import BrandLogo from '../components/brand/BrandLogo';
 
 const OnboardingSuccess = () => {
@@ -30,7 +30,7 @@ const OnboardingSuccess = () => {
         }
         sessionStorage.removeItem('insidr_onboarding');
         await refreshUser();
-        navigate('/dashboard', { replace: true });
+        navigate('/dashboard?welcome=1&checkout=success', { replace: true });
       } catch (err) {
         if (!cancelled) setError(err.error || 'Verification failed.');
       }

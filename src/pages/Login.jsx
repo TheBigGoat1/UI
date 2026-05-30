@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext.jsx';
 import { Mail, Lock, AlertCircle } from 'lucide-react';
 import AuthSplitLayout from '../components/layout/AuthSplitLayout';
 import AuthField from '../components/auth/AuthField';

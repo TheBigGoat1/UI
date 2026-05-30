@@ -13,8 +13,8 @@
     "news:sync": "node server/scripts/sync-news.mjs",
     "calendar:sync": "node server/scripts/sync-calendar.mjs",
     "setup:full": "npm install && npm run db:setup && npm run db:seed",
-    "server:kill": "node server/scripts/kill-port.mjs 3001",
-    "dev:all": "npm run server:kill && concurrently \"npm run server\" \"npm run dev\"",
+    "server:kill": "node server/scripts/kill-dev-ports.mjs",
+    "dev:all": "node server/scripts/kill-dev-ports.mjs && concurrently \"npm run server\" \"npm run dev\"",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"

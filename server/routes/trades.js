@@ -10,6 +10,17 @@ import {
   suggestPositionSize,
 } from "../services/tradingProfile.js";
 
+const THESIS_LABELS = {
+  plan: "Following the plan",
+  fomo: "FOMO / impulse",
+  revenge: "Revenge trade",
+};
+
+function thesisEmotion(tag) {
+  if (!tag) return null;
+  return THESIS_LABELS[tag] || String(tag);
+}
+
 const router = Router();
 router.use(requireAuth);
 
@@ -89,8 +100,9 @@ router.post("/flatten-all", async (req, res) => {
 
     await query(
       `INSERT INTO trades (
-         user_id, idea_id, symbol, side, entry_price, exit_price, pnl, strategy, status, plan_followed, thesis_tag, opened_at, closed_at
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())`,
+         user_id, idea_id, symbol, side, entry_price, exit_price, pnl, strategy, status,
+         plan_followed, emotion, thesis_tag, opened_at, closed_at
+       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())`,
       [
         req.user.id,
         pos.id,
@@ -102,6 +114,7 @@ router.post("/flatten-all", async (req, res) => {
         "Emergency flatten",
         journalStatus,
         pos.plan_agreed || null,
+        thesisEmotion(pos.thesis_tag),
         pos.thesis_tag || null,
         pos.position_opened_at,
       ],
@@ -236,6 +249,7 @@ router.post("/:id/close", async (req, res) => {
   const positionId = req.params.id;
   const exitPriceRaw = req.body?.exit_price;
   const plan_followed = req.body?.plan_followed;
+  const closeTag = req.body?.thesis_tag || req.body?.emotion || null;
 
   const { rows: positions } = await query(
     `${OPEN_POSITION_SQL}
@@ -289,8 +303,8 @@ router.post("/:id/close", async (req, res) => {
   await query(
     `INSERT INTO trades (
        user_id, idea_id, symbol, side, entry_price, exit_price, pnl, strategy, status,
-       plan_followed, thesis_tag, opened_at, closed_at
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())`,
+       plan_followed, emotion, thesis_tag, opened_at, closed_at
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())`,
     [
       req.user.id,
       pos.id,
@@ -302,7 +316,8 @@ router.post("/:id/close", async (req, res) => {
       ideaMapped.setup_type || "Insidr idea",
       journalStatus,
       followed,
-      pos.thesis_tag || null,
+      thesisEmotion(closeTag || pos.thesis_tag),
+      closeTag || pos.thesis_tag || null,
       pos.position_opened_at,
     ],
   );

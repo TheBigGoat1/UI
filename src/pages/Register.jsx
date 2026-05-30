@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Mail, Lock, User, AlertCircle, Eye, EyeOff } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext.jsx';
 import AuthSplitLayout from '../components/layout/AuthSplitLayout';
 import AuthField from '../components/auth/AuthField';
 import { isStrongPassword, PASSWORD_POLICY_TEXT } from '../utils/passwordPolicy.js';

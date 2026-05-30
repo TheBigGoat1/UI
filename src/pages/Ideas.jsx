@@ -9,13 +9,18 @@ import {
   Bitcoin,
   Info,
   Filter,
+  Star,
+  ListFilter,
 } from 'lucide-react';
 import TradeIdeaCard from '../features/trades/TradeIdeaCard';
 import IdeaDetailModal from '../features/trades/IdeaDetailModal';
 import DailyBriefPanel from '../components/brief/DailyBriefPanel';
+import EventGateBanner from '../components/trading/EventGateBanner';
 import PageHeader from '../components/layout/PageHeader';
 import { api } from '../services/api/api.js';
 import { friendlyApiError } from '../hooks/useAssetAnalysis.js';
+import { useEntitlements } from '../hooks/useEntitlements.js';
+import UpgradeGate from '../components/billing/UpgradeGate.jsx';
 
 const CONFIDENCE_TIERS = [
   { id: 0, label: 'All', sub: 'Any confidence' },
@@ -33,6 +38,7 @@ const CLASS_TABS = [
 ];
 
 const Ideas = () => {
+  const { canGenerateIdeas, isAuthenticated } = useEntitlements();
   const [ideaList, setIdeaList] = useState([]);
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
@@ -48,8 +54,19 @@ const Ideas = () => {
   const [listMeta, setListMeta] = useState(null);
   const [brief, setBrief] = useState(null);
   const [briefLoading, setBriefLoading] = useState(false);
+  const [watchlistSymbols, setWatchlistSymbols] = useState([]);
+  const [watchlistOnly, setWatchlistOnly] = useState(false);
 
   useEffect(() => {
+    api.trader
+      .getWatchlist()
+      .then((res) => {
+        if (res?.success && Array.isArray(res.data)) {
+          setWatchlistSymbols(res.data.map((row) => String(row.symbol || row).toUpperCase()));
+        }
+      })
+      .catch(() => {});
+
     api.tradeIdeas
       .getEngineStatus()
       .then((res) => {
@@ -176,10 +193,23 @@ const Ideas = () => {
   };
 
   const handleGenerate = async () => {
-    setGenerating(true);
-    setViewMode('latest');
     setUpgradeNotice('');
     setStatusNotice('');
+
+    if (!isAuthenticated) {
+      setStatusNotice('Sign in to generate new trade ideas.');
+      return;
+    }
+
+    if (!canGenerateIdeas) {
+      setUpgradeNotice(
+        'AI idea generation requires Pro or Elite. Browse existing ideas on Free, or start a trial on Plans.',
+      );
+      return;
+    }
+
+    setGenerating(true);
+    setViewMode('latest');
     try {
       const res = await api.tradeIdeas.generate();
       if (res?.success) {
@@ -216,7 +246,48 @@ const Ideas = () => {
 
   const cryptoCount = assetsMeta.filter((a) => a.class === 'crypto').length;
   const isBusy = loading || generating;
-  const filtersActive = confidenceThreshold > 0 || assetClass !== 'all';
+  const filtersActive = confidenceThreshold > 0 || assetClass !== 'all' || watchlistOnly;
+
+  const watchlistRank = useMemo(() => {
+    const map = {};
+    watchlistSymbols.forEach((symbol, index) => {
+      map[symbol] = index;
+    });
+    return map;
+  }, [watchlistSymbols]);
+
+  const sortedIdeaList = useMemo(() => {
+    const ideaSymbol = (idea) => String(idea.asset || idea.symbol || '').toUpperCase();
+
+    return [...ideaList].sort((a, b) => {
+      const af = a.is_todays_focus ? 1 : 0;
+      const bf = b.is_todays_focus ? 1 : 0;
+      if (bf !== af) return bf - af;
+
+      const aRank = watchlistRank[ideaSymbol(a)];
+      const bRank = watchlistRank[ideaSymbol(b)];
+      const aWatch = aRank != null ? 1 : 0;
+      const bWatch = bRank != null ? 1 : 0;
+      if (bWatch !== aWatch) return bWatch - aWatch;
+      if (aWatch && bWatch && aRank !== bRank) return aRank - bRank;
+
+      return Number(b.confidence ?? b.confluence_score ?? 0) - Number(a.confidence ?? a.confluence_score ?? 0);
+    });
+  }, [ideaList, watchlistRank]);
+
+  const displayedIdeaList = useMemo(() => {
+    if (!watchlistOnly || !watchlistSymbols.length) return sortedIdeaList;
+    const set = new Set(watchlistSymbols);
+    return sortedIdeaList.filter((idea) =>
+      set.has(String(idea.asset || idea.symbol || '').toUpperCase()),
+    );
+  }, [sortedIdeaList, watchlistOnly, watchlistSymbols]);
+
+  const focusIdea = useMemo(() => {
+    return displayedIdeaList.find((i) => i.is_todays_focus) || brief?.todaysFocus || null;
+  }, [displayedIdeaList, brief]);
+
+  const eventGateSymbol = focusIdea?.asset || focusIdea?.symbol || null;
 
   const emptyTitle =
     viewMode === 'open'
@@ -255,16 +326,27 @@ const Ideas = () => {
             onClick={handleGenerate}
             disabled={isBusy || viewMode === 'open'}
             className="btn-primary py-2.5 px-5 disabled:opacity-50"
+            title={!canGenerateIdeas && isAuthenticated ? 'Requires Pro or Elite' : undefined}
           >
             {generating ? (
               <RefreshCw size={16} className="animate-spin" />
             ) : (
               <Sparkles size={16} />
             )}
-            {generating ? 'Scanning markets…' : 'Generate New Ideas'}
+            {generating
+              ? 'Scanning markets…'
+              : !canGenerateIdeas && isAuthenticated
+                ? 'Generate (Pro)'
+                : 'Generate New Ideas'}
           </button>
         }
       />
+
+      {viewMode === 'latest' && !canGenerateIdeas && isAuthenticated && (
+        <UpgradeGate feature="ideas.generate" compact />
+      )}
+
+      {viewMode === 'latest' && <EventGateBanner symbol={eventGateSymbol} />}
 
       <p className="text-xs text-text-muted -mt-6">
         Trade ideas are decision support only — not investment advice.{' '}
@@ -283,6 +365,32 @@ const Ideas = () => {
           loading={briefLoading && !brief}
           onFocusClick={(idea) => setSelectedIdea(idea)}
         />
+      )}
+
+      {viewMode === 'latest' && focusIdea && (
+        <div className="rounded-xl border-2 border-primary/45 bg-gradient-to-r from-primary/10 via-primary/5 to-transparent p-4 flex flex-wrap items-center justify-between gap-4">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase text-primary flex items-center gap-1.5 mb-1">
+              <Star size={12} className="fill-primary" /> Today&apos;s focus
+            </p>
+            <p className="text-lg font-bold text-text-main">
+              {focusIdea.asset || focusIdea.symbol}{' '}
+              <span className="text-sm font-normal text-text-muted">
+                · {focusIdea.direction} · {Math.round(focusIdea.confidence || 0)}% confidence
+              </span>
+            </p>
+            <p className="text-xs text-text-muted mt-1 line-clamp-2 max-w-xl">
+              {focusIdea.thesis || focusIdea.rationale || 'Highest-ranked setup in today\'s scan.'}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setSelectedIdea(focusIdea)}
+            className="btn-primary text-sm py-2 px-4 shrink-0"
+          >
+            Review setup
+          </button>
+        </div>
       )}
 
       {listMeta?.suppressed?.length > 0 && viewMode === 'latest' && (
@@ -365,6 +473,7 @@ const Ideas = () => {
               onClick={() => {
                 setConfidenceThreshold(0);
                 setAssetClass('all');
+                setWatchlistOnly(false);
               }}
               className="text-xs text-primary font-bold flex items-center gap-1 hover:underline"
             >
@@ -373,12 +482,31 @@ const Ideas = () => {
           )}
 
           <span className="text-xs text-text-muted font-mono ml-auto">
-            {isBusy ? '…' : `${ideaList.length} shown`}
+            {isBusy ? '…' : `${displayedIdeaList.length} shown`}
+            {viewMode === 'latest' && watchlistSymbols.length > 0 && !watchlistOnly && (
+              <span className="hidden sm:inline text-primary/80"> · watchlist first</span>
+            )}
           </span>
         </div>
 
         {viewMode === 'latest' && (
           <>
+            <div className="flex flex-wrap gap-2 items-center">
+              {watchlistSymbols.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setWatchlistOnly((v) => !v)}
+                  className={`dash-filter-pill inline-flex items-center gap-1.5 ${
+                    watchlistOnly ? 'dash-filter-pill--active' : ''
+                  }`}
+                  title={`Show only: ${watchlistSymbols.join(', ')}`}
+                >
+                  <ListFilter size={12} />
+                  Watchlist only
+                </button>
+              )}
+            </div>
+
             <div className="flex flex-wrap gap-2">
               <span className="text-[10px] font-bold uppercase text-text-muted self-center mr-1">
                 Confidence
@@ -426,18 +554,22 @@ const Ideas = () => {
             <div key={i} className="h-[300px] bg-surface rounded-xl animate-pulse border border-border" />
           ))}
         </div>
-      ) : ideaList.length > 0 ? (
+      ) : displayedIdeaList.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {ideaList.map((idea, idx) => (
+          {displayedIdeaList.map((idea, idx) => {
+            const symbol = String(idea.asset || idea.symbol || '').toUpperCase();
+            return (
             <TradeIdeaCard
               key={idea.trade_id || idea.id || `${idea.asset}-${idx}`}
               idea={idea}
+              isWatchlist={watchlistRank[symbol] != null}
               onClick={() => setSelectedIdea(idea)}
               isOpenTrade={viewMode === 'open'}
               onCloseTrade={handleCloseFromCard}
               closing={closingId === (idea.trade_id || idea.position_id)}
             />
-          ))}
+            );
+          })}
         </div>
       ) : (
         <div
@@ -446,7 +578,11 @@ const Ideas = () => {
         >
           <Lightbulb size={48} className="mb-4 opacity-25 text-primary" />
           <h3 className="font-bold text-lg text-text-main">{emptyTitle}</h3>
-          <p className="text-sm mt-3 leading-relaxed px-4">{emptyBody}</p>
+          <p className="text-sm mt-3 leading-relaxed px-4">
+            {watchlistOnly && watchlistSymbols.length
+              ? 'No ideas on your watchlist right now. Turn off Watchlist only or generate a fresh scan.'
+              : emptyBody}
+          </p>
           {viewMode === 'latest' && (
             <div className="flex flex-wrap gap-3 mt-6 justify-center">
               <button
@@ -463,6 +599,7 @@ const Ideas = () => {
                   onClick={() => {
                     setConfidenceThreshold(0);
                     setAssetClass('all');
+                    setWatchlistOnly(false);
                   }}
                   className="btn-ghost text-sm"
                 >
@@ -489,6 +626,11 @@ const Ideas = () => {
         onTradeClosed={() => {
           setSelectedIdea(null);
           setViewMode('latest');
+          fetchIdeas();
+        }}
+        onAccepted={() => {
+          setViewMode('open');
+          setStatusNotice('Trade accepted — view it under Open trades or in Journal.');
           fetchIdeas();
         }}
       />

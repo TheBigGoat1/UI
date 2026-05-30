@@ -34,7 +34,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 logEnvBoot();
 
 const app = express();
-const PORT = Number(process.env.PORT) || 3001;
 
 app.use(cors({ origin: true, credentials: true }));
 
@@ -87,9 +86,52 @@ app.use((err, _req, res, _next) => {
 const server = http.createServer(app);
 initRealtime(server);
 
-server.listen(PORT, async () => {
-  console.log(`INSIDR API listening on http://localhost:${PORT}`);
-  console.log(`Health check: http://localhost:${PORT}/api/v1/health`);
+const PREFERRED_PORT = Number(process.env.PORT) || 3001;
+const PORT_CANDIDATES = [...new Set([PREFERRED_PORT, 3002, 3003, 3004])];
+
+function listenOnPort(port) {
+  return new Promise((resolve, reject) => {
+    const onError = (err) => {
+      server.off("listening", onListening);
+      reject(err);
+    };
+    const onListening = () => {
+      server.off("error", onError);
+      resolve(port);
+    };
+    server.once("error", onError);
+    server.once("listening", onListening);
+    server.listen(port);
+  });
+}
+
+(async () => {
+  let boundPort = null;
+  for (const port of PORT_CANDIDATES) {
+    try {
+      boundPort = await listenOnPort(port);
+      break;
+    } catch (err) {
+      if (err?.code !== "EADDRINUSE") {
+        console.error(err);
+        process.exit(1);
+      }
+      console.warn(`[api] Port ${port} in use — trying next…`);
+    }
+  }
+  if (boundPort == null) {
+    console.error("[api] No free port in", PORT_CANDIDATES.join(", "));
+    process.exit(1);
+  }
+
+  console.log(`INSIDR API listening on http://localhost:${boundPort}`);
+  console.log(`Health check: http://localhost:${boundPort}/api/v1/health`);
+  if (boundPort !== PREFERRED_PORT) {
+    console.warn(
+      `[api] ⚠ Port ${PREFERRED_PORT} is occupied by a stale process. Set PORT=${boundPort} and VITE_API_URL=http://localhost:${boundPort}/api/v1 in .env, then restart Vite.`,
+    );
+  }
+
   const tables = [
     `CREATE TABLE IF NOT EXISTS news_articles (
       id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -126,4 +168,4 @@ server.listen(PORT, async () => {
     if (r?.synced) console.log(`[macro] Economy intelligence ready (${r.synced} events synced)`);
     else if (r?.total) console.log(`[macro] Economy intelligence ready (${r.total} events in window)`);
   });
-});
+})();

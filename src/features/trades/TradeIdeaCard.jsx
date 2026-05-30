@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
-import { Clock, X, Zap } from "lucide-react";
+import { Link } from "react-router-dom";
+import { Clock, X, Zap, FlaskConical } from "lucide-react";
 import { api } from "../../services/api/api.js";
 import TradeChart from "../../components/TradeChart";
 import {
@@ -10,7 +11,7 @@ import {
 } from "../../utils/ideaDisplay.js";
 import { formatIntervalLabel } from "../../utils/chartConfig.js";
 
-const TradeIdeaCard = ({ idea, onClick, isOpenTrade, onCloseTrade, closing }) => {
+const TradeIdeaCard = ({ idea, onClick, isOpenTrade, onCloseTrade, closing, isWatchlist }) => {
   if (!idea) return null;
 
   const [currentMarketPrice, setCurrentMarketPrice] = useState(null);
@@ -115,18 +116,31 @@ const TradeIdeaCard = ({ idea, onClick, isOpenTrade, onCloseTrade, closing }) =>
     return "text-yellow-500";
   };
 
+  const backtestPreset = {
+    symbol: asset,
+    interval: triggerInterval,
+    period: "1M",
+    minConfidence: Math.max(65, Math.round(confidence)),
+    minRR: 1.5,
+  };
+
   return (
     <div
       onClick={onClick}
       role="button"
       tabIndex={0}
       onKeyDown={(e) => e.key === "Enter" && onClick?.()}
-      className={`card-modern border ${theme.border} p-0 cursor-pointer group flex flex-col relative overflow-hidden h-full ${isFocus ? "ring-1 ring-primary/40" : ""}`}
+      className={`card-modern border ${theme.border} p-0 cursor-pointer group flex flex-col relative overflow-hidden h-full ${isFocus ? "ring-2 ring-primary/50 shadow-lg shadow-primary/10" : ""}`}
     >
       <div className="signal-accent-top" />
       {isFocus && (
         <span className="absolute top-2 left-2 z-10 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-primary/20 text-primary border border-primary/40">
           Today&apos;s focus
+        </span>
+      )}
+      {!isFocus && isWatchlist && (
+        <span className="absolute top-2 left-2 z-10 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/35">
+          Watchlist
         </span>
       )}
       <div className="p-5 pb-2">
@@ -265,11 +279,22 @@ const TradeIdeaCard = ({ idea, onClick, isOpenTrade, onCloseTrade, closing }) =>
               <span className="text-[9px] text-text-muted uppercase">R:R</span>
               <span className="font-bold font-mono text-xs text-text-main">{calculateRR()}</span>
             </div>
-            <div className="flex flex-col items-end">
-              <span className="text-[9px] text-text-muted uppercase">Confluence</span>
-              <span className="font-bold text-xs text-primary" title="Score out of 10">
-                {formatConfluence10(idea)}
-              </span>
+            <div className="flex items-center gap-3">
+              <Link
+                to="/dashboard/backtest"
+                state={{ preset: backtestPreset }}
+                onClick={(e) => e.stopPropagation()}
+                className="text-[9px] font-bold uppercase text-primary hover:underline flex items-center gap-1"
+                title="Backtest this setup"
+              >
+                <FlaskConical size={11} /> Backtest
+              </Link>
+              <div className="flex flex-col items-end">
+                <span className="text-[9px] text-text-muted uppercase">Confluence</span>
+                <span className="font-bold text-xs text-primary" title="Score out of 10">
+                  {formatConfluence10(idea)}
+                </span>
+              </div>
             </div>
           </>
         )}

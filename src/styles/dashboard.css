@@ -402,6 +402,26 @@
   gap: 1.5rem;
 }
 
+.dash-overview-command-row {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 768px) {
+  .dash-overview-command-row {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.dash-page--chart-mode .dash-market-layout {
+  min-height: clamp(560px, 78vh, 920px);
+}
+
+.dash-shell--chart-mode .dash-main {
+  /* sidebar collapsed via chartMode effect */
+}
+
 /* Analysis + chart split — chart column fills remaining width and height */
 .dash-market-layout {
   display: grid;

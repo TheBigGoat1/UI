@@ -3,9 +3,8 @@ import { io } from "socket.io-client";
 let socketRef = null;
 
 function baseWsUrl() {
-  if (import.meta.env.DEV) return window.location.origin;
-  const api = import.meta.env.VITE_API_URL || window.location.origin;
-  return api.replace("/api/v1", "");
+  const api = import.meta.env.VITE_API_URL || window.location.origin + '/api/v1';
+  return api.replace(/\/api\/v1\/?$/, '');
 }
 
 export function getSocket() {

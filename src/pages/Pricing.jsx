@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { Check, Zap, Crown, Loader2, Sparkles, AlertTriangle, CreditCard } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { Check, Zap, Crown, Loader2, Sparkles, AlertTriangle, CreditCard, CheckCircle2 } from 'lucide-react';
+import { useAuth } from '../context/AuthContext.jsx';
 import { api } from '../services/api/api';
 import PageHeader from '../components/layout/PageHeader';
+import PlanFeatureMatrix from '../components/billing/PlanFeatureMatrix.jsx';
 
 const PRO_FEATURES = [
   'Live AI trade ideas',
@@ -29,13 +30,21 @@ const FREE_FEATURES = [
 
 const Pricing = () => {
   const { user, refreshUser } = useAuth();
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [billingCycle, setBillingCycle] = useState('annual');
   const [loadingPlan, setLoadingPlan] = useState(null);
   const [checkoutError, setCheckoutError] = useState('');
   const [checkoutNotice, setCheckoutNotice] = useState('');
+  const [billingHealth, setBillingHealth] = useState(null);
 
   const isDev = import.meta.env.DEV;
+
+  useEffect(() => {
+    api.billing.health().then((res) => {
+      if (res?.success) setBillingHealth(res.data);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     const sessionId = searchParams.get('session_id');
@@ -48,21 +57,20 @@ const Pricing = () => {
           const res = await api.billing.verifySession(sessionId);
           if (res?.success) {
             await refreshUser();
-            setCheckoutNotice('Trial activated — welcome to Insidr!');
             setSearchParams({}, { replace: true });
-          } else {
-            setCheckoutError(res?.error || 'Could not verify checkout.');
+            navigate('/dashboard?welcome=1&checkout=success', { replace: true });
+            return;
           }
+          setCheckoutError(res?.error || 'Could not verify checkout.');
         } else {
           await refreshUser();
-          setCheckoutNotice('Subscription updated.');
-          setSearchParams({}, { replace: true });
+          navigate('/dashboard?welcome=1&checkout=success', { replace: true });
         }
       } catch (err) {
         setCheckoutError(err.error || 'Checkout verification failed.');
       }
     })();
-  }, [searchParams, refreshUser, setSearchParams]);
+  }, [searchParams, refreshUser, setSearchParams, navigate]);
 
   const startCheckout = async (plan) => {
     setLoadingPlan(plan);
@@ -176,6 +184,46 @@ const Pricing = () => {
               <code className="px-1 bg-black/30 rounded">STRIPE_BUSINESS_NAME=Insidr</code> to .env
               and restart the API. End users can still checkout with regular personal cards.
             </p>
+          </div>
+        </div>
+      )}
+
+      {isDev && billingHealth && (
+        <div
+          className={`mb-6 p-4 rounded-xl border text-sm flex flex-wrap items-start gap-3 ${
+            billingHealth.stripe_configured
+              ? 'border-emerald-500/30 bg-emerald-500/10'
+              : 'border-amber-500/30 bg-amber-500/10'
+          }`}
+        >
+          {billingHealth.stripe_configured ? (
+            <CheckCircle2 size={18} className="text-emerald-400 shrink-0 mt-0.5" />
+          ) : (
+            <AlertTriangle size={18} className="text-amber-400 shrink-0 mt-0.5" />
+          )}
+          <div className="text-xs text-text-muted leading-relaxed">
+            <p className="font-bold text-text-main mb-1">Stripe checkout smoke test</p>
+            <ul className="space-y-1">
+              <li>
+                Secret key:{' '}
+                <strong className={billingHealth.stripe_configured ? 'text-emerald-400' : 'text-amber-300'}>
+                  {billingHealth.stripe_configured ? 'configured' : 'missing — add STRIPE_SECRET_KEY to .env'}
+                </strong>
+              </li>
+              <li>
+                Webhook:{' '}
+                {billingHealth.webhook_configured ? 'configured' : 'optional for local (use session verify)'}
+              </li>
+              <li>
+                Dev trial: {billingHealth.dev_trial_enabled ? 'enabled' : 'disabled in production'}
+              </li>
+            </ul>
+            {!billingHealth.stripe_configured && (
+              <p className="mt-2">
+                Use <strong className="text-text-main">Dev: trial without Stripe</strong> below to test Pro
+                gates locally.
+              </p>
+            )}
           </div>
         </div>
       )}
@@ -366,6 +414,11 @@ const Pricing = () => {
             )}
           </div>
         </div>
+      </div>
+
+      <div className="mt-10">
+        <h2 className="text-lg font-bold text-text-main mb-3">Compare plans</h2>
+        <PlanFeatureMatrix />
       </div>
     </div>
   );

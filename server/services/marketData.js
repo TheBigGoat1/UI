@@ -1,5 +1,5 @@
 import { ASSETS, getAssetMeta } from "../config/assets.js";
-import { cached } from "./cache.js";
+import { cached, hasRedisCache } from "./cache.js";
 import { env } from "../config/env.js";
 import {
   fetchBinanceKlines,
@@ -177,7 +177,8 @@ export function unwrapHistory(result) {
 }
 
 export async function getAllPrices() {
-  return cached("market:prices", 8000, async () => {
+  const priceTtl = hasRedisCache() ? 15000 : 8000;
+  return cached("market:prices", priceTtl, async () => {
     const out = {};
     const cryptoAssets = ASSETS.filter((a) => isBinanceAsset(a));
 
@@ -302,11 +303,12 @@ export async function getHistory(symbol, interval = "1day", period = "1M") {
   const meta = getAssetMeta(symbol) || { asset: symbol, basePrice: 100, yahoo: symbol };
   const range = PERIOD_RANGE[period] || "1mo";
   const cacheKey = `history:${meta.asset}:${interval}:${period}`;
+  const historyTtl = hasRedisCache() ? 120000 : 45000;
   const fallbackBars = () =>
     syntheticHistory(meta, interval, barCountForPeriod(period));
 
   try {
-    const raw = await cached(cacheKey, 45000, async () => {
+    const raw = await cached(cacheKey, historyTtl, async () => {
       if (isBinanceAsset(meta)) {
         try {
           const limit = klineLimitForPeriod(period);

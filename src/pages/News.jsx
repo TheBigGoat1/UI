@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { api } from '../services/api/api.js';
 import {
   Newspaper,
@@ -19,6 +19,7 @@ import PageHeader from '../components/layout/PageHeader';
 import DashSelect from '../components/ui/DashSelect.jsx';
 
 const News = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
   const [viewMode, setViewMode] = useState('latest'); 
   const [selectedAsset, setSelectedAsset] = useState('EURUSD');
   const [searchQuery, setSearchQuery] = useState('');
@@ -68,6 +69,37 @@ const News = () => {
     });
     loadConnections();
   }, []);
+
+  useEffect(() => {
+    if (searchParams.get('asset')) return;
+    let active = true;
+    api.trader
+      .getWatchlist()
+      .then((res) => {
+        if (!active || !res?.success || !Array.isArray(res.data) || !res.data.length) return;
+        const first = res.data[0].symbol || res.data[0];
+        if (first) {
+          setSelectedAsset(String(first).toUpperCase());
+          setViewMode('asset');
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, [searchParams]);
+
+  useEffect(() => {
+    const assetParam = searchParams.get('asset');
+    if (!assetParam) return;
+    const normalized = assetParam.toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (normalized) {
+      setSelectedAsset(normalized);
+      setViewMode('asset');
+      setPage(1);
+      setSearchQuery('');
+    }
+  }, [searchParams]);
 
   const fetchData = async () => {
     if (page === 1) {
@@ -219,17 +251,24 @@ const News = () => {
   }, [articleTotal, connections]);
 
   const handleAssetSelect = (e) => {
-    setSelectedAsset(e.target.value);
+    const val = e.target.value;
+    setSelectedAsset(val);
     setViewMode('asset');
     setPage(1);
-    setSearchQuery(''); 
+    setSearchQuery('');
+    setSearchParams(val ? { asset: val } : {}, { replace: true });
   };
 
   const handleModeSwitch = (mode) => {
     if (viewMode === mode) return;
     setViewMode(mode);
     setPage(1);
-    if (mode === 'latest') setSearchQuery('');
+    if (mode === 'latest') {
+      setSearchQuery('');
+      setSearchParams({}, { replace: true });
+    } else {
+      setSearchParams({ asset: selectedAsset }, { replace: true });
+    }
   };
 
   const handleSearchChange = (e) => {
@@ -437,6 +476,7 @@ const News = () => {
                  const source = item.source || 'Aggregator';
                  const url = item.url;
                  const score = item.sentiment_score ?? item.score;
+                 const relatedAssets = item.symbols || item.assets || [];
                  
                  // Fallback to "US" if countryCode isn't provided by your API yet, 
                  // or use the base currency of the selected asset if viewing by asset
@@ -479,6 +519,20 @@ const News = () => {
                           </div>
                           
                           <h3 className="text-sm font-medium text-text-main group-hover:text-primary transition-colors leading-snug mt-1.5">{title}</h3>
+                          {relatedAssets.length > 0 && viewMode === 'latest' && (
+                            <div className="flex flex-wrap gap-1 mt-1.5">
+                              {relatedAssets.slice(0, 4).map((sym) => (
+                                <Link
+                                  key={sym}
+                                  to={`/dashboard/news?asset=${encodeURIComponent(sym)}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded border border-primary/30 text-primary hover:bg-primary/10"
+                                >
+                                  {sym}
+                                </Link>
+                              ))}
+                            </div>
+                          )}
                           {summary && <p className="text-xs text-text-muted mt-1 line-clamp-2 max-w-3xl">{summary}</p>}
                           
                           <div className="mt-2 flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity">

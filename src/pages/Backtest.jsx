@@ -3,13 +3,20 @@ import { Link, useLocation } from 'react-router-dom';
 import { api } from '../services/api/api.js';
 import { friendlyApiError } from '../utils/friendlyApiError.js';
 import { runClientBacktest, isRecoverableBacktestError } from '../utils/clientBacktest.js';
+import { useEntitlements } from '../hooks/useEntitlements.js';
+import { useAuth } from '../context/AuthContext.jsx';
+import UpgradeGate from '../components/billing/UpgradeGate.jsx';
 import PageHeader from '../components/layout/PageHeader';
 import DashSelect from '../components/ui/DashSelect.jsx';
-import { History, PlayCircle, TrendingUp, AlertTriangle, CheckCircle2, XCircle, RefreshCw } from 'lucide-react';
+import { History, PlayCircle, TrendingUp, AlertTriangle, CheckCircle2, XCircle, RefreshCw, Lock, Download } from 'lucide-react';
+import { buildBacktestCsv, downloadCsv } from '../utils/exportCsv.js';
 
 const Backtest = () => {
   const location = useLocation();
   const preset = location.state?.preset;
+  const { refreshUser } = useAuth();
+  const { canRunBacktest, isAuthenticated } = useEntitlements();
+  const isDev = import.meta.env.DEV;
 
   const getThirtyDaysAgo = () => {
     const d = new Date();
@@ -27,6 +34,7 @@ const Backtest = () => {
   const [error, setError] = useState(null);
   const [notice, setNotice] = useState('');
   const [upgradeNotice, setUpgradeNotice] = useState('');
+  const [devTrialLoading, setDevTrialLoading] = useState(false);
   const [assetList, setAssetList] = useState([]);
 
   useEffect(() => {
@@ -49,6 +57,19 @@ const Backtest = () => {
   }, [preset]);
 
   const handleRunBacktest = async () => {
+    if (!isAuthenticated) {
+      setError('Sign in to run backtests.');
+      return;
+    }
+
+    if (!canRunBacktest) {
+      setUpgradeNotice(
+        'Backtesting requires Pro or Elite. Start a 7-day trial on Plans — or use dev trial below when testing locally.',
+      );
+      setError(null);
+      return;
+    }
+
     if (new Date(dates.start) > new Date(dates.end)) {
       setError('Start date must be before end date.');
       return;
@@ -90,7 +111,7 @@ const Backtest = () => {
         return;
       }
 
-      if (isRecoverableBacktestError(apiErr)) {
+      if (isRecoverableBacktestError(apiErr) && canRunBacktest) {
         const fallback = runClientBacktest({
           asset: config.asset,
           start_date: dates.start,
@@ -114,7 +135,7 @@ const Backtest = () => {
         setError(null);
       } else if (err?.status === 401) {
         setError('Sign in to run backtests.');
-      } else if (isRecoverableBacktestError(err)) {
+      } else if (isRecoverableBacktestError(err) && canRunBacktest) {
         const fallback = runClientBacktest({
           asset: config.asset,
           start_date: dates.start,
@@ -131,6 +152,24 @@ const Backtest = () => {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const startDevTrial = async () => {
+    setDevTrialLoading(true);
+    setUpgradeNotice('');
+    try {
+      const res = await api.billing.startDevTrial({ plan: 'pro', billingCycle: 'monthly' });
+      if (res?.success) {
+        await refreshUser();
+        setUpgradeNotice('Pro trial started — you can run backtests now.');
+      } else {
+        setUpgradeNotice(res?.error || 'Dev trial failed.');
+      }
+    } catch (err) {
+      setUpgradeNotice(err?.error || 'Dev trial failed.');
+    } finally {
+      setDevTrialLoading(false);
     }
   };
 
@@ -153,6 +192,13 @@ const Backtest = () => {
   const metrics = calculateMetrics(results);
   const totalTrades = results?.total || 0;
 
+  const exportResultsCsv = () => {
+    if (!results) return;
+    const rows = buildBacktestCsv({ results, config, dates, riskReward, metrics });
+    const stamp = new Date().toISOString().slice(0, 10);
+    downloadCsv(`insidr-backtest-${config.asset}-${stamp}.csv`, rows);
+  };
+
   return (
     <div className="dash-page space-y-8 max-w-5xl mx-auto">
       <PageHeader
@@ -160,6 +206,15 @@ const Backtest = () => {
         title="Strategy Backtester"
         description="Walk-forward simulation on historical OHLC using the same technical engine as live ideas (HTF/LTF bias + confidence filter)."
       />
+
+      {!canRunBacktest && isAuthenticated && (
+        <UpgradeGate
+          feature="backtest.run"
+          showDevTrial={isDev}
+          onDevTrial={startDevTrial}
+          devTrialLoading={devTrialLoading}
+        />
+      )}
 
       <div className="rounded-lg border border-primary/20 bg-primary/5 px-4 py-3 text-xs text-text-muted">
         <strong className="text-text-main">Tip:</strong> Crypto pairs (BTCUSD, ETHUSD) use Binance history for
@@ -239,15 +294,21 @@ const Backtest = () => {
             <button
               type="button"
               onClick={handleRunBacktest}
-              disabled={loading}
+              disabled={loading || (!canRunBacktest && isAuthenticated)}
               className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-50"
             >
               {loading ? (
                 <RefreshCw size={18} className="animate-spin" />
+              ) : !canRunBacktest && isAuthenticated ? (
+                <Lock size={18} />
               ) : (
                 <PlayCircle size={18} />
               )}
-              {loading ? 'Simulating…' : 'Run simulation'}
+              {loading
+                ? 'Simulating…'
+                : !canRunBacktest && isAuthenticated
+                  ? 'Pro required'
+                  : 'Run simulation'}
             </button>
           </div>
         </div>
@@ -277,6 +338,22 @@ const Backtest = () => {
 
       {results && !loading && (
         <div className="space-y-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-text-muted">
+              {results.dataSource && (
+                <span className="font-semibold text-text-main capitalize">{results.dataSource}</span>
+              )}{' '}
+              simulation · {totalTrades} signal{totalTrades === 1 ? '' : 's'}
+            </p>
+            <button
+              type="button"
+              onClick={exportResultsCsv}
+              className="px-4 py-2 rounded-lg border border-border hover:bg-surface-hover text-sm font-semibold flex items-center gap-2"
+            >
+              <Download size={15} /> Export CSV
+            </button>
+          </div>
+
           {(results.message || results.total === 0) && (
             <div className="bg-amber-500/10 border border-amber-500/25 text-amber-200/90 p-4 rounded-lg text-sm">
               {results.message ||

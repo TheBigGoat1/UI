@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { api } from "../services/api/api.js";
 import PageHeader from "../components/layout/PageHeader";
+import EventGateBanner from "../components/trading/EventGateBanner";
 import DashSelect from "../components/ui/DashSelect.jsx";
 import {
   CalendarDays,
@@ -271,6 +272,8 @@ const Calendar = () => {
         title="Economic Calendar"
         description="Macro releases for US, EU, UK, JP, AU, CA, CH, NZ, CN — filter by impact, country, and date."
       />
+
+      <EventGateBanner />
 
       {loadError && (
         <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200 flex flex-wrap items-center justify-between gap-3">

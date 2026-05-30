@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/AuthContext.jsx';
 import { api } from '../services/api/api';
 import BrandLogo from '../components/brand/BrandLogo';
 import { 
@@ -68,10 +68,32 @@ const OnboardingWizard = () => {
     });
   };
 
+  const buildOnboardingPayload = () => ({
+    trading_experience: formData.experience,
+    preferred_markets: formData.markets,
+    base_currency: formData.currency,
+    watchlist: formData.watchlist,
+  });
+
+  const finishOnboarding = async (destination = '/dashboard?welcome=1') => {
+    try {
+      await api.auth.saveOnboarding(buildOnboardingPayload());
+    } catch {
+      /* onboarding metadata optional */
+    }
+
+    const res = await completeSetup({ watchlist: formData.watchlist });
+    if (res.success) {
+      await refreshUser();
+      navigate(destination);
+      return true;
+    }
+    setCheckoutError(res.error || 'Could not complete onboarding.');
+    return false;
+  };
+
   const handleSkip = async () => {
-    const res = await completeSetup();
-    if (res.success) navigate('/dashboard');
-    else setCheckoutError(res.error || 'Could not skip onboarding.');
+    await finishOnboarding('/dashboard?welcome=1');
   };
 
   const handleCheckout = async (planId) => {
@@ -81,14 +103,9 @@ const OnboardingWizard = () => {
     setCheckoutNotice('');
 
     try {
-      const onboardingPayload = {
-        plan: planId,
-        billing_cycle: billingCycle,
-        trading_experience: formData.experience,
-        preferred_markets: formData.markets,
-        base_currency: formData.currency,
-        watchlist: formData.watchlist,
-      };
+      const onboardingPayload = buildOnboardingPayload();
+      onboardingPayload.plan = planId;
+      onboardingPayload.billing_cycle = billingCycle;
 
       const saveRes = await api.auth.saveOnboarding(onboardingPayload);
       if (!saveRes?.success) throw new Error(saveRes?.error || 'Could not save onboarding.');
@@ -122,13 +139,24 @@ const OnboardingWizard = () => {
     setCheckoutError('');
     setCheckoutNotice('');
     try {
+      try {
+        await api.auth.saveOnboarding({
+          ...buildOnboardingPayload(),
+          plan: planId,
+          billing_cycle: billingCycle,
+        });
+      } catch {
+        /* continue */
+      }
+
       const res = await api.billing.startDevTrial({ plan: planId, billingCycle });
       if (!res?.success) {
         throw new Error(res?.error || 'Could not start local trial.');
       }
+      await completeSetup({ watchlist: formData.watchlist });
       await refreshUser();
-      setCheckoutNotice('7-day trial activated. Redirecting to dashboard…');
-      setTimeout(() => navigate('/dashboard'), 600);
+      setCheckoutNotice('7-day trial activated. Redirecting to your command center…');
+      setTimeout(() => navigate('/dashboard?welcome=1'), 600);
     } catch (err) {
       setCheckoutError(err.message || err.error || 'Could not start local trial.');
     } finally {

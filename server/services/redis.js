@@ -45,3 +45,24 @@ export async function pub(channel, payload) {
   if (!redis) return;
   await redis.publish(channel, JSON.stringify(payload));
 }
+
+export function isRedisConfigured() {
+  return hasRedisConfig();
+}
+
+export async function probeRedis() {
+  if (!hasRedisConfig()) {
+    return { configured: false, status: "not_configured", note: "REDIS_URL in .env (Upstash / Redis Cloud)" };
+  }
+  try {
+    const redis = getRedis();
+    const pong = await redis.ping();
+    return {
+      configured: true,
+      status: pong === "PONG" ? "ok" : "error",
+      note: "Shared cache for quotes, OHLC, and rate-limit relief",
+    };
+  } catch (e) {
+    return { configured: true, status: "error", message: e.message };
+  }
+}

@@ -10,6 +10,7 @@ import {
 } from "../services/ideaEngine.js";
 import { buildDailyBrief } from "../services/dailyBrief.js";
 import { hasAnthropicKey } from "../services/anthropic.js";
+import { notifyWatchlistIdeas } from "../services/alertDelivery.js";
 
 const router = Router();
 
@@ -98,6 +99,13 @@ router.post("/generate", requireAuth, requireCapability("ideas.generate"), async
         ? `Generated ${ideas.length} idea${ideas.length === 1 ? "" : "s"}`
         : meta?.emptyHint ||
           "No bullish/bearish setups found — markets may be ranging. Try again later.";
+
+    if (req.user?.id && ideas.length) {
+      notifyWatchlistIdeas(req.user.id, ideas).catch((err) => {
+        console.warn("[ideas] watchlist alert failed:", err.message);
+      });
+    }
+
     res.json({
       success: true,
       data: ideas,

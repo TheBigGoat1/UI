@@ -7,6 +7,7 @@ import {
   suggestPositionSize,
 } from "../services/tradingProfile.js";
 import { getScorecard, getWeeklyDebrief, getSetupStatsForSymbol } from "../services/scorecard.js";
+import { getEventGateForSymbol, getUpcomingHighImpactGate } from "../services/eventGate.js";
 import { query } from "../db.js";
 import { mapIdeaRow } from "../services/ideaEngine.js";
 import { safeAsync, isDbMissingError } from "../utils/safeRoute.js";
@@ -19,6 +20,137 @@ const DEFAULT_PROFILE = {
   max_open_trades: 3,
   max_book_heat_pct: 3,
 };
+
+router.get("/ping", (_req, res) => {
+  res.json({
+    success: true,
+    data: {
+      service: "trader",
+      features: ["watchlist", "event-gate", "profile", "heat", "scorecard"],
+    },
+  });
+});
+
+router.get(
+  "/watchlist",
+  requireAuth,
+  safeAsync(async (req, res) => {
+    try {
+      const { rows } = await query(
+        `SELECT symbol, asset_class, created_at
+         FROM watchlist
+         WHERE user_id = $1
+         ORDER BY created_at ASC`,
+        [req.user.id],
+      );
+      res.json({
+        success: true,
+        data: rows.map((row) => ({
+          symbol: row.symbol,
+          assetClass: row.asset_class,
+          createdAt: row.created_at,
+        })),
+      });
+    } catch (error) {
+      if (isDbMissingError(error)) {
+        return res.json({ success: true, data: [], meta: { degraded: true } });
+      }
+      throw error;
+    }
+  }),
+);
+
+router.post(
+  "/watchlist",
+  requireAuth,
+  safeAsync(async (req, res) => {
+    const symbol = String(req.body?.symbol || "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "");
+    if (symbol.length < 3 || symbol.length > 12) {
+      return res.status(400).json({ success: false, error: "Enter a valid symbol (3–12 characters)." });
+    }
+
+    try {
+      await query(
+        `INSERT INTO watchlist (user_id, symbol)
+         VALUES ($1, $2)
+         ON CONFLICT (user_id, symbol) DO NOTHING`,
+        [req.user.id, symbol],
+      );
+
+      const { rows } = await query(
+        `SELECT symbol, asset_class, created_at
+         FROM watchlist
+         WHERE user_id = $1
+         ORDER BY created_at ASC`,
+        [req.user.id],
+      );
+
+      res.json({
+        success: true,
+        data: rows.map((row) => ({
+          symbol: row.symbol,
+          assetClass: row.asset_class,
+          createdAt: row.created_at,
+        })),
+      });
+    } catch (error) {
+      if (isDbMissingError(error)) {
+        return res.status(503).json({
+          success: false,
+          error: "Watchlist storage unavailable. Run npm run db:setup.",
+        });
+      }
+      throw error;
+    }
+  }),
+);
+
+router.delete(
+  "/watchlist/:symbol",
+  requireAuth,
+  safeAsync(async (req, res) => {
+    const symbol = String(req.params.symbol || "")
+      .toUpperCase()
+      .replace(/[^A-Z0-9]/g, "");
+    if (!symbol) {
+      return res.status(400).json({ success: false, error: "Symbol required." });
+    }
+
+    try {
+      await query(`DELETE FROM watchlist WHERE user_id = $1 AND symbol = $2`, [
+        req.user.id,
+        symbol,
+      ]);
+
+      const { rows } = await query(
+        `SELECT symbol, asset_class, created_at
+         FROM watchlist
+         WHERE user_id = $1
+         ORDER BY created_at ASC`,
+        [req.user.id],
+      );
+
+      res.json({
+        success: true,
+        data: rows.map((row) => ({
+          symbol: row.symbol,
+          assetClass: row.asset_class,
+          createdAt: row.created_at,
+        })),
+      });
+    } catch (error) {
+      if (isDbMissingError(error)) {
+        return res.status(503).json({
+          success: false,
+          error: "Watchlist storage unavailable. Run npm run db:setup.",
+        });
+      }
+      throw error;
+    }
+  }),
+);
 
 router.get(
   "/profile",
@@ -131,6 +263,42 @@ router.get(
         return res.json({
           success: true,
           data: { symbol: req.params.symbol, samples: 0, winRate: null },
+          meta: { degraded: true },
+        });
+      }
+      throw error;
+    }
+  }),
+);
+
+router.get(
+  "/event-gate",
+  requireAuth,
+  safeAsync(async (req, res) => {
+    try {
+      const profile = await getTradingProfile(req.user.id);
+      const windowMinutes =
+        Number(req.query.minutes) || profile.event_gate_minutes || 45;
+      const symbol = req.query.symbol
+        ? String(req.query.symbol).toUpperCase().replace(/[^A-Z0-9]/g, "")
+        : null;
+
+      const data = symbol
+        ? await getEventGateForSymbol(symbol, windowMinutes)
+        : await getUpcomingHighImpactGate(windowMinutes);
+
+      res.json({ success: true, data: { ...data, windowMinutes } });
+    } catch (error) {
+      if (isDbMissingError(error)) {
+        return res.json({
+          success: true,
+          data: {
+            blocked: false,
+            warning: false,
+            minutesUntil: null,
+            nextEvent: null,
+            eventCount: 0,
+          },
           meta: { degraded: true },
         });
       }
