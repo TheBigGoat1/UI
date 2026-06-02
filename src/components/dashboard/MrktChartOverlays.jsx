@@ -8,14 +8,6 @@ function priceY(price, min, max) {
   return Math.min(90, Math.max(10, pct));
 }
 
-const DEFAULT_MARKER_POSITIONS = [
-  { left: 22, topOffset: 0.004 },
-  { left: 38, topOffset: -0.002 },
-  { left: 55, topOffset: 0.003 },
-  { left: 68, topOffset: -0.004 },
-  { left: 78, topOffset: 0.001 },
-];
-
 function BrainHoverPrompt({ style, visible, onClick }) {
   if (!visible) return null;
   return (
@@ -117,18 +109,7 @@ const MrktChartOverlays = ({
         item: a.item,
       }));
     }
-    if (!showLabels) return [];
-    return DEFAULT_MARKER_POSITIONS.map((pos, i) => ({
-      id: `default-${i}`,
-      left: pos.left,
-      top: priceY(range.price * (1 + pos.topOffset), range.min, range.max),
-      text:
-        i === 0
-          ? 'What can push price here?'
-          : `${symbol || 'XAUUSD'} — session catalyst near this level`,
-      sub: i === 0 ? 'Session recap · key catalysts' : undefined,
-      variant: i % 2 === 0 ? 'purple' : 'red',
-    }));
+    return [];
   }, [annotations, showLabels, range, symbol]);
 
   const chartEvents = useMemo(() => {

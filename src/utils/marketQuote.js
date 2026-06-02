@@ -14,7 +14,8 @@ export function resolveMarketQuote({
 }) {
   const modelFromAnalysis = isModelDataQuality(dataQuality);
   const modelFromPrice = Boolean(priceData?.synthetic);
-  const isModel = modelFromAnalysis || modelFromPrice;
+  const hasLivePrice = Number.isFinite(Number(priceData?.price)) && !modelFromPrice;
+  const isModel = !hasLivePrice && (modelFromAnalysis || modelFromPrice);
 
   const lastBar =
     historyBars.length > 0 ? Number(historyBars[historyBars.length - 1]?.close) : null;
@@ -24,16 +25,16 @@ export function resolveMarketQuote({
   let price = Number(priceData?.price);
   let changePercent = Number(priceData?.changePercent ?? 0);
 
-  if (isModel) {
+  if (hasLivePrice) {
+    price = Number(priceData.price);
+    changePercent = Number(priceData.changePercent ?? changePercent);
+  } else if (isModel) {
     const modelPrice = Number(levelsLast) || lastBar || price;
     if (Number.isFinite(modelPrice)) price = modelPrice;
 
     if (Number.isFinite(lastBar) && Number.isFinite(prevBar) && prevBar !== 0) {
       changePercent = ((lastBar - prevBar) / prevBar) * 100;
     }
-  } else if (Number.isFinite(Number(priceData?.price))) {
-    price = Number(priceData.price);
-    changePercent = Number(priceData.changePercent ?? changePercent);
   }
 
   return {

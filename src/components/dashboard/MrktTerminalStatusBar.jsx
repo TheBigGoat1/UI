@@ -11,6 +11,8 @@ const MrktTerminalStatusBar = ({
   lastDeskSync,
   priceSource,
   chartLive,
+  quoteDriftPct = null,
+  decisionUnsafe = false,
   newsError,
   onRefresh,
   refreshing = false,
@@ -36,6 +38,13 @@ const MrktTerminalStatusBar = ({
     <span className="mrkt-terminal-status__item">
       Chart OHLC <strong>{formatRelativeSync(lastChartSync)}</strong>
       {!chartLive && <em className="mrkt-terminal-status__warn">model bars</em>}
+    </span>
+    <span className="mrkt-terminal-status__item">
+      Sync{' '}
+      <strong className={decisionUnsafe ? 'mrkt-terminal-status__sync-bad' : 'mrkt-terminal-status__sync-ok'}>
+        {quoteDriftPct == null ? 'checking' : `${quoteDriftPct.toFixed(2)}%`}
+      </strong>
+      {decisionUnsafe && <em className="mrkt-terminal-status__warn">feed divergence</em>}
     </span>
     <span className="mrkt-terminal-status__item">
       Desk <strong>{formatRelativeSync(lastDeskSync)}</strong>

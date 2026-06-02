@@ -5,7 +5,7 @@ import { applyDeskPriceAliases } from '../utils/deskSymbols.js';
 import { userMessageFromError } from '../utils/apiError.js';
 
 const PRICE_POLL_MS = 800;
-const TURBO_QUOTE_MS = 550;
+const TURBO_QUOTE_MS = 300;
 const NEWS_POLL_MS = 8000;
 
 /**

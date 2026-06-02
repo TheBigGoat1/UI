@@ -30,6 +30,23 @@ const PERIOD_RANGE = {
   "1Y": "1y",
 };
 
+const TV_FALLBACK_MAP = {
+  XAUUSD: "FOREXCOM:XAUUSD",
+  XAGUSD: "FOREXCOM:XAGUSD",
+  USOIL: "TVC:USOIL",
+  US500: "SP:SPX",
+  US30: "DJ:DJI",
+  NAS100: "NASDAQ:NDX",
+};
+
+function tradingViewTickerForMeta(meta) {
+  if (!meta?.asset) return null;
+  if (meta.binance) return `BINANCE:${meta.binance}`;
+  if (TV_FALLBACK_MAP[meta.asset]) return TV_FALLBACK_MAP[meta.asset];
+  if (/^[A-Z]{6}$/.test(meta.asset)) return `FX:${meta.asset}`;
+  return null;
+}
+
 function intervalStep(interval) {
   const map = {
     "1m": 60,
@@ -57,6 +74,38 @@ async function fetchJson(url, options = {}) {
   } catch (err) {
     if (String(err?.message || "").includes("429")) return null;
     throw err;
+  }
+}
+
+async function fetchTradingViewQuote(tvTicker) {
+  if (!tvTicker) return null;
+  try {
+    const url = "https://scanner.tradingview.com/global/scan";
+    const payload = {
+      symbols: { tickers: [tvTicker], query: { types: [] } },
+      columns: ["close", "change", "change_abs"],
+    };
+    const json = await fetchJson(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const row = Array.isArray(json?.data) ? json.data[0] : null;
+    const [close, changePct, changeAbs] = Array.isArray(row?.d) ? row.d : [];
+    const price = Number(close);
+    const changePercent = Number(changePct);
+    const change = Number(changeAbs);
+    if (!Number.isFinite(price) || price <= 0) return null;
+    return {
+      price,
+      change: Number.isFinite(change) ? change : 0,
+      changePercent: Number.isFinite(changePercent) ? changePercent : 0,
+      updatedAt: new Date().toISOString(),
+      source: "tradingview",
+      synthetic: false,
+    };
+  } catch {
+    return null;
   }
 }
 
@@ -279,10 +328,14 @@ export async function getLiveQuote(symbol) {
   const meta = getAssetMeta(symbol);
   if (!meta?.asset) return null;
   const cacheKey = `quote:live:${meta.asset}`;
-  const quoteTtl = 700;
+  const quoteTtl = 250;
 
   return cached(cacheKey, quoteTtl, async () => {
     try {
+      const tvTicker = tradingViewTickerForMeta(meta);
+      const tvQuote = await fetchTradingViewQuote(tvTicker);
+      if (tvQuote?.price != null) return tvQuote;
+
       if (isBinanceAsset(meta)) {
         const row = await fetchBinancePrice(meta.asset);
         if (row?.price != null) {
@@ -296,6 +349,28 @@ export async function getLiveQuote(symbol) {
           };
         }
       }
+
+      const twelveSpot = await fetchTwelveQuote(meta.asset);
+      if (twelveSpot != null) {
+        const series = await fetchTwelveTimeSeries(meta.asset, "1h", 40).catch(() => null);
+        const latest = Array.isArray(series) && series.length ? series[series.length - 1] : null;
+        const prev = Array.isArray(series) && series.length > 1 ? series[series.length - 2] : null;
+        const refPrice =
+          Number.isFinite(Number(prev?.close)) && Number(prev.close) !== 0
+            ? Number(prev.close)
+            : null;
+        const change = refPrice != null ? twelveSpot - refPrice : 0;
+        const changePercent = refPrice != null ? (change / refPrice) * 100 : 0;
+        return {
+          price: twelveSpot,
+          change,
+          changePercent,
+          updatedAt: new Date().toISOString(),
+          source: "twelve-data",
+          synthetic: false,
+        };
+      }
+
       const yahoo = await fetchYahooQuoteChange(meta.yahoo);
       if (yahoo?.price != null) {
         return { ...yahoo, synthetic: false };

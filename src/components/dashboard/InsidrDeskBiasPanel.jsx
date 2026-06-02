@@ -30,6 +30,16 @@ function biasPhrase(bias) {
   return { text: 'neutral', className: 'insidr-desk-bias__pill--neutral' };
 }
 
+function resolveDisplayBias({ technicalBias, supportDir, aiFallback }) {
+  const tech = String(technicalBias || 'neutral').toLowerCase();
+  if (tech === 'bullish' || tech === 'bearish') return tech;
+  const support = String(supportDir || '').toLowerCase();
+  if (support === 'bullish' || support === 'bearish') return support;
+  const ai = String(aiFallback?.bias || '').toLowerCase();
+  if (ai === 'bullish' || ai === 'bearish') return ai;
+  return 'neutral';
+}
+
 function flipWord(dir) {
   if (dir === 'bullish') return 'bullish';
   if (dir === 'bearish') return 'bearish';
@@ -157,7 +167,6 @@ const InsidrDeskBiasPanel = ({
 
   const { technical, loading, refresh, meta } = analysisState || {};
   const bias = technical?.bias || 'neutral';
-  const phrase = biasPhrase(bias);
   const updatedLabel = formatDeskUpdated(meta?.asOf);
 
   const liveBrief = brief || deskData?.brief;
@@ -183,6 +192,12 @@ const InsidrDeskBiasPanel = ({
   const { supportCards, flipCards, tape, summary, flipDir, headlineCount, timeframeSummary } = deskView;
   const supportVariant = deskView.supportDir === 'bearish' ? 'bear' : 'bull';
   const flipVariant = flipDir === 'bearish' ? 'bear' : 'bull';
+  const displayBias = resolveDisplayBias({
+    technicalBias: bias,
+    supportDir: deskView.supportDir,
+    aiFallback: deskData?.aiFallbackBias,
+  });
+  const phrase = biasPhrase(displayBias);
 
   const handleNewsSnippet = (snippet) => {
     const match = (newsPool || []).find(
@@ -254,6 +269,9 @@ const InsidrDeskBiasPanel = ({
             )}
 
             {summary && <p className="insidr-desk-bias__summary">{summary}</p>}
+            {displayBias === 'neutral' && deskData?.aiFallbackBias?.rationale && (
+              <p className="insidr-desk-bias__summary">{deskData.aiFallbackBias.rationale}</p>
+            )}
 
             <div className="insidr-desk-bias__columns">
               <BiasColumn

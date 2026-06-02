@@ -202,6 +202,11 @@ export function useAssetAnalysis(symbol, interval = '4h', period = '1M', basePri
     };
   }, [load]);
 
+  const refresh = useCallback(
+    (opts = {}) => load({ silent: opts?.silent ?? true }),
+    [load],
+  );
+
   return {
     data,
     technical: data?.technical ?? null,
@@ -211,6 +216,6 @@ export function useAssetAnalysis(symbol, interval = '4h', period = '1M', basePri
     loading,
     error,
     usingFallback,
-    refresh: () => load(),
+    refresh,
   };
 }

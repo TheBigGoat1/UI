@@ -216,7 +216,9 @@ const MrktCandleAnalysisPanel = ({
             <p className="mrkt-candle-hot-label">HOT HEADLINES</p>
             <ul className="mrkt-candle-news-list">
               {relatedNews.length === 0 && (
-                <li className="mrkt-candle-news-empty">No related headlines in the current feed.</li>
+                <li className="mrkt-candle-news-empty">
+                  AI context generated from candle structure and macro tape while the wire catches up.
+                </li>
               )}
               {relatedNews.map((n, i) => {
                 const { clock, ago } = formatNewsTime(n.publishedAt);

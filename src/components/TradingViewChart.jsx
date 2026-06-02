@@ -1,6 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTheme } from '../context/ThemeContext.jsx';
-import { toTradingViewInterval, toTradingViewSymbol } from '../utils/tradingView.js';
+import {
+  isTradingViewSupportedAsset,
+  toTradingViewInterval,
+  toTradingViewSymbol,
+} from '../utils/tradingView.js';
 import { api } from '../services/api/api.js';
 import {
   buildClientSyntheticHistory,
@@ -50,6 +54,7 @@ function hasTvIframe(container) {
 
 const TradingViewChart = ({
   symbol,
+  data,
   interval = '4h',
   height = 400,
   interactive = true,
@@ -57,6 +62,7 @@ const TradingViewChart = ({
   levels = [],
   modelMode = false,
   quotePrice = null,
+  preferDataFeed = false,
   className = '',
   onReady,
 }) => {
@@ -68,11 +74,18 @@ const TradingViewChart = ({
   const [loading, setLoading] = useState(true);
 
   const tvSymbol = toTradingViewSymbol(symbol);
+  const tvSupported = isTradingViewSupportedAsset(symbol);
   const tvInterval = toTradingViewInterval(interval);
   const pxHeight = Math.max(compact ? 128 : 280, Number(height) || 400);
+  const hasProvidedBars = Array.isArray(data) && data.length > 0;
 
   useEffect(() => {
     if (!symbol) return undefined;
+    if (hasProvidedBars) {
+      setBars(normalizeOhlcRows(data));
+      setLoading(false);
+      return undefined;
+    }
     let active = true;
     const range = compact ? '1W' : '1M';
     const seedPrice = modelMode && Number.isFinite(Number(quotePrice)) ? Number(quotePrice) : undefined;
@@ -105,11 +118,11 @@ const TradingViewChart = ({
     return () => {
       active = false;
     };
-  }, [symbol, interval, compact, modelMode, quotePrice]);
+  }, [symbol, interval, compact, modelMode, quotePrice, data, hasProvidedBars]);
 
   useEffect(() => {
     const el = containerRef.current;
-    if (!el || !symbol) return undefined;
+    if (!el || !symbol || preferDataFeed || !tvSupported) return undefined;
 
     setTvReady(false);
     setUseFallback(false);
@@ -121,7 +134,6 @@ const TradingViewChart = ({
       mountTradingViewWidget(el, {
         autosize: true,
         width: '100%',
-        height: pxHeight,
         symbol: tvSymbol,
         interval: tvInterval,
         timezone: 'Etc/UTC',
@@ -168,7 +180,7 @@ const TradingViewChart = ({
       window.clearInterval(checkTimer);
       if (el) el.innerHTML = '';
     };
-  }, [symbol, tvSymbol, tvInterval, isDark, interactive, compact, pxHeight, onReady]);
+  }, [symbol, tvSymbol, tvInterval, isDark, interactive, compact, onReady, preferDataFeed, tvSupported]);
 
   if (!symbol) {
     return (
@@ -183,13 +195,15 @@ const TradingViewChart = ({
 
   const visibleLevels = (levels || []).filter((l) => formatLevelPrice(l.price) != null);
   const hasBars = bars.length > 0;
+  const showFallbackBars =
+    hasBars && (modelMode || useFallback || !tvReady || preferDataFeed || !tvSupported);
 
   return (
     <div
       className={`tradingview-chart-wrap ${className}`}
       style={{ height: pxHeight, minHeight: pxHeight }}
     >
-      {hasBars && (
+      {showFallbackBars && (
         <OhlcVisualChart
           data={bars}
           height={pxHeight}
@@ -198,7 +212,7 @@ const TradingViewChart = ({
         />
       )}
 
-      {!useFallback && (
+      {!preferDataFeed && !useFallback && tvSupported && (
         <div
           ref={containerRef}
           className={`tradingview-chart-mount ${
@@ -215,13 +229,15 @@ const TradingViewChart = ({
         </div>
       )}
 
-      {(modelMode || useFallback || (!tvReady && hasBars)) && (
+      {(modelMode || useFallback || (!tvReady && hasBars && !preferDataFeed) || !tvSupported) && (
         <span className={`ohlc-visual__badge ${modelMode ? 'ohlc-visual__badge--model' : ''}`}>
           {modelMode
             ? 'Model candles · TV shows live broker data'
-            : useFallback
+              : useFallback
               ? 'Live candles · open TradingView for full tools'
-              : 'Loading TradingView…'}
+              : !tvSupported
+                ? 'Live fallback candles · TV symbol unavailable'
+                : 'Loading TradingView…'}
         </span>
       )}
 

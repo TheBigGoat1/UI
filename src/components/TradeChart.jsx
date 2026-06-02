@@ -18,6 +18,7 @@ const TradeChart = ({
   fill = false,
   modelMode = false,
   quotePrice = null,
+  preferDataFeed = false,
   className = '',
 }) => {
   const wrapRef = useRef(null);
@@ -33,7 +34,10 @@ const TradeChart = ({
 
     const measure = () => {
       const h = wrapRef.current?.getBoundingClientRect().height;
-      if (h && h > 0) setMeasuredHeight(Math.max(compact ? 128 : 280, Math.floor(h)));
+      if (!h || h <= 0) return;
+      const next = Math.max(compact ? 128 : 280, Math.floor(h));
+      // Ignore tiny resize jitter to prevent chart remount flicker.
+      setMeasuredHeight((prev) => (Math.abs(prev - next) >= 4 ? next : prev));
     };
 
     measure();
@@ -51,6 +55,7 @@ const TradeChart = ({
     >
       <TradingViewChart
         symbol={resolvedSymbol}
+        data={data}
         interval={interval}
         levels={levels}
         height={chartHeight}
@@ -58,6 +63,7 @@ const TradeChart = ({
         compact={compact}
         modelMode={modelMode}
         quotePrice={quotePrice}
+        preferDataFeed={preferDataFeed}
         className={fill ? 'trade-chart-shell__chart' : className}
       />
     </div>

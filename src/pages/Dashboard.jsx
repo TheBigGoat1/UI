@@ -31,7 +31,17 @@ const FEATURE_TOGGLE_MAP = {
   targets: 'chart.targets',
 };
 
+function timeframeToMs(interval = '1h') {
+  const iv = String(interval || '1h').toLowerCase();
+  if (iv.endsWith('m')) return Math.max(Number.parseInt(iv, 10) * 60_000, 15_000);
+  if (iv.endsWith('h')) return Math.max(Number.parseInt(iv, 10) * 3_600_000, 60_000);
+  if (iv === '1day' || iv === '1d') return 86_400_000;
+  if (iv === '1week' || iv === '1w') return 604_800_000;
+  return 3_600_000;
+}
+
 const Dashboard = () => {
+  const hideTopPrice = true;
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const access = useFeatureAccess();
@@ -50,6 +60,7 @@ const Dashboard = () => {
   const [syncAllLoading, setSyncAllLoading] = useState(false);
   const [candlePanelHeadline, setCandlePanelHeadline] = useState(null);
   const [chartCalendarEvents, setChartCalendarEvents] = useState([]);
+  const [lastGoodTopQuote, setLastGoodTopQuote] = useState({ price: null, changePercent: null });
   const [toggles, setToggles] = useState({
     labels: true,
     calendar: true,
@@ -147,7 +158,7 @@ const Dashboard = () => {
     selectedAsset,
     chartConfig.interval,
     chartConfig.period,
-    selectedPrice?.price,
+    null,
   );
 
   const analysisState = useAssetAnalysis(
@@ -156,6 +167,7 @@ const Dashboard = () => {
     chartConfig.period,
     selectedPrice?.price,
   );
+  const refreshAnalysis = analysisState.refresh;
 
   const displayQuote = resolveMarketQuote({
     priceData: selectedPrice,
@@ -163,6 +175,26 @@ const Dashboard = () => {
     levelsLast: analysisState.technical?.modules?.levels?.last,
     historyBars: chartBars,
   });
+
+  const canonicalQuote = useMemo(() => {
+    const livePrice = Number(selectedPrice?.price);
+    const liveChangePercent = Number(selectedPrice?.changePercent);
+    const hasLivePrice = Number.isFinite(livePrice) && livePrice > 0 && !selectedPrice?.synthetic;
+    const safeLiveChangePercent =
+      Number.isFinite(liveChangePercent) &&
+      Math.abs(liveChangePercent) <= 95 &&
+      !(livePrice > 0 && Math.abs(liveChangePercent) === 100)
+        ? liveChangePercent
+        : null;
+    const fallbackChangePercent = Number(displayQuote.changePercent || 0);
+    return {
+      price: hasLivePrice ? livePrice : displayQuote.price,
+      changePercent: hasLivePrice
+        ? (safeLiveChangePercent ?? fallbackChangePercent)
+        : fallbackChangePercent,
+      isLive: hasLivePrice,
+    };
+  }, [selectedPrice, displayQuote]);
 
   const ms = analysisState.technical?.modules?.marketStructure;
   const swingTrend = ms?.htf?.trend;
@@ -179,16 +211,43 @@ const Dashboard = () => {
     return `${selectedAsset} — live desk`;
   }, [headlineNews, brief, selectedAsset]);
 
-  const changePercent = displayQuote.changePercent ?? selectedPrice?.changePercent ?? 0;
-  const price = displayQuote.price ?? selectedPrice?.price;
+  const price = canonicalQuote.price ?? selectedPrice?.price;
+  const changePercent = canonicalQuote.changePercent ?? selectedPrice?.changePercent ?? 0;
+  const chartLastClose = Number(chartBars[chartBars.length - 1]?.close);
+  const candidatePrice = Number(price);
+  const candidateChangePercent = Number(changePercent);
+  const hasValidCandidatePrice = Number.isFinite(candidatePrice) && candidatePrice > 0;
+  const hasValidCandidateChange =
+    Number.isFinite(candidateChangePercent) && Math.abs(candidateChangePercent) <= 95;
+
+  useEffect(() => {
+    if (!hasValidCandidatePrice) return;
+    setLastGoodTopQuote((prev) => {
+      if (
+        prev.price === candidatePrice &&
+        (hasValidCandidateChange ? prev.changePercent === candidateChangePercent : true)
+      ) {
+        return prev;
+      }
+      return {
+        price: candidatePrice,
+        changePercent: hasValidCandidateChange ? candidateChangePercent : prev.changePercent,
+      };
+    });
+  }, [candidatePrice, candidateChangePercent, hasValidCandidatePrice, hasValidCandidateChange]);
+
+  const syncedPrice = hasValidCandidatePrice ? candidatePrice : lastGoodTopQuote.price;
+  const syncedChangePercent = hasValidCandidateChange
+    ? candidateChangePercent
+    : (lastGoodTopQuote.changePercent ?? 0);
 
   const changeAbs =
-    price != null && changePercent != null
-      ? (Number(price) * Number(changePercent)) / 100
+    syncedPrice != null && syncedChangePercent != null
+      ? (Number(syncedPrice) * Number(syncedChangePercent)) / 100
       : null;
 
-  const support = lv?.support ?? (price ? Number(price) * 0.988 : null);
-  const resistance = lv?.resistance ?? (price ? Number(price) * 1.01 : null);
+  const support = lv?.support ?? (syncedPrice ? Number(syncedPrice) * 0.988 : null);
+  const resistance = lv?.resistance ?? (syncedPrice ? Number(syncedPrice) * 1.01 : null);
 
   const displayAnalysisState = useMemo(() => {
     if (!analysisState.technical) return analysisState;
@@ -377,25 +436,36 @@ const Dashboard = () => {
         reloadMarket(),
         reloadNews(),
         loadDeskIntelligence(),
-        analysisState.refresh?.(),
+        refreshAnalysis?.({ silent: true }),
       ]);
     } finally {
       setSyncAllLoading(false);
     }
-  }, [reloadMarket, reloadNews, loadDeskIntelligence, analysisState]);
+  }, [reloadMarket, reloadNews, loadDeskIntelligence, refreshAnalysis]);
 
   const lastTapeRefresh = useRef(0);
+  const lastTapeRefreshAt = useRef(0);
   useEffect(() => {
     const ch = Number(changePercent);
-    if (!Number.isFinite(ch) || Math.abs(ch - lastTapeRefresh.current) < 0.06) return undefined;
+    const now = Date.now();
+    // Avoid rapid analysis recompute jitter from tiny tape moves.
+    if (
+      !Number.isFinite(ch) ||
+      Math.abs(ch - lastTapeRefresh.current) < 0.2 ||
+      now - lastTapeRefreshAt.current < 4000
+    ) {
+      return undefined;
+    }
     lastTapeRefresh.current = ch;
-    const t = setTimeout(() => analysisState.refresh?.(), 600);
+    lastTapeRefreshAt.current = now;
+    const t = setTimeout(() => refreshAnalysis?.({ silent: true }), 1200);
     return () => clearTimeout(t);
-  }, [changePercent, selectedAsset]);
+  }, [changePercent, selectedAsset, refreshAnalysis]);
 
   useEffect(() => {
     loadDeskIntelligence();
-    const id = setInterval(loadDeskIntelligence, 30000);
+    const deskCadenceMs = timeframeToMs(chartConfig.interval);
+    const id = setInterval(loadDeskIntelligence, deskCadenceMs);
     const offDesk = subscribeSocket('desk:snapshot', (payload) => {
       if (payload?.data) {
         setDeskData(payload.data);
@@ -406,10 +476,21 @@ const Dashboard = () => {
       clearInterval(id);
       offDesk();
     };
-  }, [loadDeskIntelligence]);
+  }, [loadDeskIntelligence, chartConfig.interval]);
+
+  useEffect(() => {
+    const analysisCadenceMs = Math.max(timeframeToMs(chartConfig.interval), 120000);
+    const id = setInterval(() => refreshAnalysis?.({ silent: true }), analysisCadenceMs);
+    return () => clearInterval(id);
+  }, [refreshAnalysis, chartConfig.interval, selectedAsset]);
 
   const chartIsModel = !selectedPrice?.price && displayQuote.isModel;
-  const chartIsLive = Boolean(selectedPrice?.price) && !selectedPrice?.synthetic && isLiveTape;
+  const chartIsLive = canonicalQuote.isLive && isLiveTape;
+  const quoteDriftPct =
+    Number.isFinite(chartLastClose) && Number.isFinite(Number(canonicalQuote.price)) && Number(canonicalQuote.price) > 0
+      ? (Math.abs(chartLastClose - Number(canonicalQuote.price)) / Number(canonicalQuote.price)) * 100
+      : null;
+  const decisionUnsafe = !canonicalQuote.isLive || (quoteDriftPct != null && quoteDriftPct > 0.12);
 
   const handleCalendarEventInsight = useCallback(() => {
     setDeskTab('calendar');
@@ -466,9 +547,9 @@ const Dashboard = () => {
         {!headerCompact && (
         <MrktTerminalHeader
           headline={headline}
-          price={price}
+          price={syncedPrice}
           changeAbs={changeAbs}
-          changePercent={changePercent}
+          changePercent={syncedChangePercent}
           swingTrend={swingTrend}
           dayTrend={dayTrend}
           symbol={selectedAsset}
@@ -476,6 +557,8 @@ const Dashboard = () => {
           chartPeriod={chartConfig.period}
           timeframe={analysisState.timeframe}
           isLive={chartIsLive}
+          hideTopPrice={hideTopPrice}
+          topPriceReason="TradingView price is authoritative on chart axis"
         />
       )}
 
@@ -489,6 +572,8 @@ const Dashboard = () => {
         lastDeskSync={lastDeskSync}
         priceSource={priceSource}
         chartLive={chartIsLive}
+        quoteDriftPct={quoteDriftPct}
+        decisionUnsafe={decisionUnsafe}
         newsError={newsError}
         onRefresh={handleSyncAll}
         refreshing={syncAllLoading || deskLoading}
@@ -499,7 +584,7 @@ const Dashboard = () => {
         <div className="mrkt-terminal__header-compact">
           <p className="mrkt-terminal__header-compact-headline">{headline}</p>
           <span className="mrkt-terminal__header-compact-price">
-            {formatPrice(price, selectedAsset)}
+            {hideTopPrice ? 'TradingView price on chart axis' : formatPrice(price, selectedAsset)}
           </span>
           <button type="button" className="mrkt-desk-controls__btn" onClick={toggleHeaderCompact}>
             Show full header
@@ -563,7 +648,7 @@ const Dashboard = () => {
                         showLabels={toggles.labels && access.canLabels}
                         showTargets={toggles.targets && access.canTargets}
                         showCalendarEvents={toggles.calendar && access.canCalendar}
-                        price={price}
+                        price={syncedPrice}
                         support={support ?? price}
                         resistance={resistance ?? price}
                         symbol={selectedAsset}

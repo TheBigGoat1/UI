@@ -311,6 +311,59 @@ export function getDeskAiStatus() {
   };
 }
 
+function normalizeBiasWord(raw) {
+  const t = String(raw || "").toLowerCase();
+  if (t.includes("bull")) return "bullish";
+  if (t.includes("bear")) return "bearish";
+  return "neutral";
+}
+
+async function buildAiFallbackBias({ symbol, sentiment, capitalFlows, brief, prices }) {
+  if (!hasAnthropicKey()) return null;
+  const score = Number(sentiment?.score);
+  const vix = brief?.regime?.vix;
+  const env = brief?.regime?.environment || "NEUTRAL";
+  const symPct = pctFromPriceRow(prices, symbol);
+  const topFlows = (capitalFlows?.flows || [])
+    .slice(0, 6)
+    .map((f) => `${f.ticker}:${Number(f.pct || 0).toFixed(2)}%`)
+    .join(" | ");
+
+  try {
+    const raw = await cached(`desk:ai-bias:${symbol}`, 45000, async () =>
+      chatCompletion({
+        system:
+          "You are a strict market-bias classifier. Return concise factual output only.",
+        user: `Classify immediate desk bias for ${symbol}.
+Use only this data:
+- Sentiment score: ${Number.isFinite(score) ? score : "n/a"}/100
+- Regime: ${env}
+- VIX: ${vix ?? "n/a"}
+- ${symbol} session change: ${Number(symPct).toFixed(2)}%
+- Flow snapshot: ${topFlows || "n/a"}
+
+Output exactly:
+BIAS: bullish|bearish|neutral
+RATIONALE: <max 22 words, data-backed>`,
+        maxTokens: 120,
+        temperature: 0.1,
+      }),
+    );
+    const lines = String(raw || "").split(/\r?\n/);
+    const biasLine = lines.find((l) => /^bias\s*:/i.test(l)) || "";
+    const rationaleLine = lines.find((l) => /^rationale\s*:/i.test(l)) || "";
+    return {
+      bias: normalizeBiasWord(biasLine.split(":").slice(1).join(":").trim()),
+      rationale:
+        rationaleLine.split(":").slice(1).join(":").trim() ||
+        "AI fallback bias from live desk factors.",
+      provider: "anthropic",
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function analyzeCalendarEventDesk({ event, symbol = "XAUUSD" }) {
   const title = event?.event_name || event?.event || event?.title || "";
   if (!title) {
@@ -451,6 +504,14 @@ export async function getDeskIntelligenceBundle(symbol = "XAUUSD") {
     };
   })();
 
+  const aiFallbackBias = await buildAiFallbackBias({
+    symbol: String(symbol).toUpperCase(),
+    sentiment,
+    capitalFlows: flowsBundle,
+    brief,
+    prices,
+  });
+
   return {
     asOf: new Date().toISOString(),
     symbol: String(symbol).toUpperCase(),
@@ -459,6 +520,7 @@ export async function getDeskIntelligenceBundle(symbol = "XAUUSD") {
     rateRows,
     scheduleRisk,
     sentiment,
+    aiFallbackBias,
     brief: {
       regime: brief.regime,
       veteranLine: brief.veteranLine,

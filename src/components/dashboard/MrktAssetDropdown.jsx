@@ -10,11 +10,20 @@ const MrktAssetDropdown = ({ symbol, assets = [], prices = {}, onSelect }) => {
   const rootRef = useRef(null);
 
   const list = useMemo(() => {
-    if (assets?.length) {
-      return assets.map((a) => (typeof a === 'string' ? a : a.asset || a.symbol)).filter(Boolean);
-    }
-    return ['XAUUSD', 'EURUSD', 'GBPUSD', 'USDJPY', 'BTCUSD', 'ESUSD', 'NQUSD'];
-  }, [assets]);
+    const fromAssets = (assets || [])
+      .map((a) => (typeof a === 'string' ? a : a.asset || a.symbol))
+      .filter(Boolean)
+      .map((s) => String(s).toUpperCase());
+
+    const fromPrices = Object.keys(prices || {})
+      .map((s) => String(s).toUpperCase().replace(/^C:/, ''))
+      .filter((s) => /^[A-Z0-9]{3,12}$/.test(s));
+
+    const merged = [...new Set([...fromAssets, ...fromPrices])].sort((a, b) => a.localeCompare(b));
+    if (merged.length) return merged;
+
+    return ['XAUUSD', 'EURUSD', 'GBPUSD', 'USDJPY', 'BTCUSD', 'ETHUSD', 'US500', 'NAS100'];
+  }, [assets, prices]);
 
   useEffect(() => {
     if (!open) return undefined;

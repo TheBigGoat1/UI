@@ -57,6 +57,8 @@ const MrktTerminalHeader = ({
   chartPeriod = '1W',
   timeframe,
   isLive = true,
+  hideTopPrice = false,
+  topPriceReason = 'Price displayed on chart axis',
 }) => {
   const isUp = Number(changePercent) >= 0;
   const isDown = Number(changePercent) < 0;
@@ -78,14 +80,20 @@ const MrktTerminalHeader = ({
       <h1 className="mrkt-terminal__headline">{headline}</h1>
 
       <div className="mrkt-terminal__price-block">
-        <span className="mrkt-terminal__price">{formatPrice(price, symbol)}</span>
-        <span
-          className={`mrkt-terminal__change ${
-            isUp ? 'mrkt-terminal__change--up' : 'mrkt-terminal__change--down'
-          }`}
-        >
-          {changeLine}
-        </span>
+        {hideTopPrice ? (
+          <span className="mrkt-terminal__change">{topPriceReason}</span>
+        ) : (
+          <>
+            <span className="mrkt-terminal__price">{formatPrice(price, symbol)}</span>
+            <span
+              className={`mrkt-terminal__change ${
+                isUp ? 'mrkt-terminal__change--up' : 'mrkt-terminal__change--down'
+              }`}
+            >
+              {changeLine}
+            </span>
+          </>
+        )}
         <span className={`mrkt-terminal__live-tag ${isLive ? 'mrkt-terminal__live-tag--on' : ''}`}>
           {isLive ? 'LIVE' : 'MODEL'}
         </span>
