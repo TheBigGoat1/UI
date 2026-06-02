@@ -1,154 +1,130 @@
-import React, { useEffect, useState } from "react";
-import { api } from "../services/api/api.js";
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { api } from '../services/api/api.js';
+import { AlertTriangle, RefreshCw, Sparkles, ArrowRight } from 'lucide-react';
+import TradeChart from '../components/TradeChart';
+import MrktTerminalHeader from '../components/dashboard/MrktTerminalHeader';
+import MrktChartToolbar from '../components/dashboard/MrktChartToolbar';
+import MrktNewsFeed from '../components/dashboard/MrktNewsFeed';
+import MrktChartOverlays from '../components/dashboard/MrktChartOverlays';
+import MrktAssetPicker from '../components/dashboard/MrktAssetPicker';
+import InsidrDeskBiasPanel from '../components/dashboard/InsidrDeskBiasPanel.jsx';
+import MrktChartEventBadge from '../components/dashboard/MrktChartEventBadge.jsx';
+import MrktCandleAnalysisPanel from '../components/dashboard/MrktCandleAnalysisPanel.jsx';
+import MrktChartLiveRibbon from '../components/dashboard/MrktChartLiveRibbon.jsx';
+import { applyLiveSessionBias } from '../utils/liveSessionBias.js';
+import { primaryAssetForNews } from '../utils/newsAssets.js';
+import { useAssetAnalysis } from '../hooks/useAssetAnalysis.js';
+import { useFeatureAccess } from '../hooks/useFeatureAccess.js';
+import { useLayout } from '../context/LayoutContext.jsx';
+import { resolveMarketQuote } from '../utils/marketQuote.js';
+import { subscribeSocket } from '../services/realtime/socket.js';
+import { applyDeskPriceAliases } from '../utils/deskSymbols.js';
 
-import {
-  Activity,
-  ArrowRight,
-  Server,
-  WifiIcon,
-  Info,
-  Globe,
-  Zap,
-  BarChart2,
-  Clock,
-  RefreshCw,
-  AlertTriangle,
-  Maximize2,
-  Minimize2,
-  Sparkles,
-} from "lucide-react";
-import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import PageHeader from "../components/layout/PageHeader";
-import DashSelect from "../components/ui/DashSelect.jsx";
-import DashStat from "../components/dashboard/DashStat";
-import DashPanel from "../components/dashboard/DashPanel";
-import AssetGrid from "../components/dashboard/AssetGrid";
-import AssetAnalysisPanel from "../components/dashboard/AssetAnalysisPanel";
-import TradeChart from "../components/TradeChart";
-import { useAuth } from "../context/AuthContext.jsx";
-import { useAssetAnalysis } from "../hooks/useAssetAnalysis.js";
-import { resolveMarketQuote } from "../utils/marketQuote.js";
-import {
-  CHART_INTERVALS,
-  CHART_PERIODS,
-  DEFAULT_CHART,
-  normalizeOhlcRows,
-  buildClientSyntheticHistory,
-  periodToInterval,
-} from "../utils/chartConfig.js";
-import { subscribeSocket } from "../services/realtime/socket.js";
-import DailyBriefPanel from "../components/brief/DailyBriefPanel";
-import TopIdeasStrip from "../components/dashboard/TopIdeasStrip";
-import BookHeatMeter from "../components/dashboard/BookHeatMeter";
-import SetupChecklist from "../components/dashboard/SetupChecklist";
-import RiskRegimeBanner from "../components/macro/RiskRegimeBanner";
-import { useLayout } from "../context/LayoutContext.jsx";
+const FEATURE_TOGGLE_MAP = {
+  labels: 'chart.labels',
+  calendar: 'chart.calendar',
+  targets: 'chart.targets',
+};
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { user } = useAuth();
-  const { chartMode, toggleChartMode } = useLayout();
+  const access = useFeatureAccess();
+  const layout = useLayout();
   const showWelcome = searchParams.get('welcome') === '1';
   const checkoutSuccess = searchParams.get('checkout') === 'success';
 
-  const dismissWelcome = () => {
-    setSearchParams({}, { replace: true });
-  };
-
-  // -- STATE --
   const [assetsList, setAssetsList] = useState([]);
   const [prices, setPrices] = useState({});
-  const [selectedAsset, setSelectedAsset] = useState("EURUSD");
-  const [viewAllAssets, setViewAllAssets] = useState(false);
-
-  // Detailed Data State
-  const [assetHistory, setAssetHistory] = useState([]);
-  const [isChartLoading, setIsChartLoading] = useState(false);
-
-  // Chart & Global State
-  const [chartConfig, setChartConfig] = useState({ ...DEFAULT_CHART });
-  const [risk, setRisk] = useState(null);
-  const [systemStatus, setSystemStatus] = useState({ online: false });
-  const [isGlobalLoading, setIsGlobalLoading] = useState(true);
-  const [fetchError, setFetchError] = useState(null);
-  const [portfolio, setPortfolio] = useState(null);
+  const [selectedAsset, setSelectedAsset] = useState('XAUUSD');
+  const [chartConfig, setChartConfig] = useState({ interval: '1h', period: '1W' });
   const [brief, setBrief] = useState(null);
-  const [briefLoading, setBriefLoading] = useState(true);
+  const [headlineNews, setHeadlineNews] = useState([]);
+  const [fetchError, setFetchError] = useState(null);
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [selectedNews, setSelectedNews] = useState(null);
+  const [deskTab, setDeskTab] = useState('bias');
+  const [deskData, setDeskData] = useState(null);
+  const [deskLoading, setDeskLoading] = useState(false);
+  const [candlePanelHeadline, setCandlePanelHeadline] = useState(null);
+  const [chartCalendarEvents, setChartCalendarEvents] = useState([]);
+  const [toggles, setToggles] = useState({
+    labels: true,
+    calendar: true,
+    targets: true,
+  });
 
+  const { chartExpanded, newsOpen, headerCompact, toggleChartExpanded, toggleNewsOpen, toggleHeaderCompact } =
+    layout;
 
-  // --- TIME FILTER ---
-  const filterDataByTime = (data, period) => {
-    if (!data || data.length === 0) return [];
-    const timestamps = data.map((d) => d.time).filter((t) => Number.isFinite(t));
-    if (timestamps.length < 2) return data;
-    const latestTimestamp = Math.max(...timestamps);
-    const durationSeconds = {
-      "1D": 24 * 60 * 60,
-      "1W": 7 * 24 * 60 * 60,
-      "1M": 30 * 24 * 60 * 60,
-      "3M": 90 * 24 * 60 * 60,
-      "1Y": 365 * 24 * 60 * 60,
+  useEffect(() => {
+    setToggles((prev) => ({
+      labels: access.canLabels ? prev.labels : false,
+      calendar: access.canCalendar ? prev.calendar : false,
+      targets: access.canTargets ? prev.targets : false,
+    }));
+  }, [access.canLabels, access.canCalendar, access.canTargets]);
+
+  useEffect(() => {
+    if (!selectedAsset || !toggles.calendar) return undefined;
+    let active = true;
+    const from = new Date();
+    const to = new Date(from.getTime() + 14 * 24 * 60 * 60 * 1000);
+    api.calendar
+      .getEvents({
+        from: from.toISOString(),
+        to: to.toISOString(),
+        country: 'US',
+        importance: 'HIGH',
+        limit: 20,
+      })
+      .then((res) => {
+        if (active && res?.success) setChartCalendarEvents(res.data || []);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
     };
-    const duration = durationSeconds[period] || 30 * 24 * 60 * 60;
-    const cutoffTime = latestTimestamp - duration;
-    const trimmed = data.filter((d) => d.time >= cutoffTime);
-    return trimmed.length >= 2 ? trimmed : data;
-  };
+  }, [selectedAsset, toggles.calendar]);
+
+  const dismissWelcome = () => setSearchParams({}, { replace: true });
 
   const loadMarketData = async () => {
     setFetchError(null);
     try {
-      const [healthRes, riskRes, listRes, pricesRes, portfolioRes] = await Promise.all([
-        api.system.getHealth(),
-        api.analysis.getRiskEnvironment(),
+      const [listRes, pricesRes] = await Promise.all([
         api.market.getAssetsList(),
         api.market.getAllPrices(),
-        api.portfolio.getLiveStats().catch(() => ({ success: false })),
       ]);
-
-      setSystemStatus({ online: healthRes?.success !== false });
-      if (riskRes?.success) setRisk(riskRes.data);
-      if (pricesRes?.success && pricesRes.data) setPrices(pricesRes.data);
-
       if (listRes?.success && Array.isArray(listRes.data) && listRes.data.length) {
         setAssetsList(listRes.data);
       }
-
-      if (portfolioRes?.success && portfolioRes.data) setPortfolio(portfolioRes.data);
-
-      if (!pricesRes?.success || !pricesRes?.data || !Object.keys(pricesRes.data).length) {
-        setFetchError("Market prices unavailable. Is the API running on port 3001?");
+      if (pricesRes?.success && pricesRes.data) setPrices(applyDeskPriceAliases(pricesRes.data));
+      if (!pricesRes?.success || !Object.keys(pricesRes?.data || {}).length) {
+        setFetchError('Market prices unavailable. Run: npm run dev:all');
       }
     } catch {
-      setSystemStatus({ online: false });
-      setFetchError("Cannot reach API. Run: npm run dev:all");
-    } finally {
-      setIsGlobalLoading(false);
+      setFetchError('Cannot reach API. Run: npm run dev:all');
     }
   };
 
-  // -- DATA FETCHING --
   useEffect(() => {
     loadMarketData();
     const interval = setInterval(async () => {
       try {
         const res = await api.market.getAllPrices();
-        if (res?.success) setPrices(res.data);
+        if (res?.success) setPrices(applyDeskPriceAliases(res.data));
       } catch {
-        /* price poll failed — keep last snapshot */
+        /* keep last snapshot */
       }
-    }, 5000);
-    const offPrices = subscribeSocket("market:prices", (payload) => {
-      if (payload?.prices) setPrices(payload.prices);
-    });
-    const offRealtime = subscribeSocket("realtime:status", () => {
-      setSystemStatus((prev) => ({ ...prev, online: true }));
+    }, 2500);
+    const offPrices = subscribeSocket('market:prices', (payload) => {
+      if (payload?.prices) setPrices(applyDeskPriceAliases(payload.prices));
     });
     return () => {
       clearInterval(interval);
       offPrices();
-      offRealtime();
     };
   }, []);
 
@@ -174,107 +150,29 @@ const Dashboard = () => {
       .then((res) => {
         if (active && res?.success) setBrief(res.data);
       })
-      .catch(() => {})
-      .finally(() => {
-        if (active) setBriefLoading(false);
-      });
+      .catch(() => {});
     return () => {
       active = false;
     };
   }, []);
 
-  // -- DETAILED ASSET FETCH --
   useEffect(() => {
-    if (!selectedAsset) return;
-
-    const controller = new AbortController();
-    setIsChartLoading(true);
-    setAssetHistory([]);
-
-    const fetchDetails = async () => {
-      const basePrice = prices[selectedAsset]?.price;
-
-      const [historyRes] = await Promise.all([
-        api.market.getHistory(
-          selectedAsset,
-          chartConfig.interval,
-          chartConfig.period,
-        ),
-      ]);
-
-      if (controller.signal.aborted) return;
-
-      let normalizedData = [];
-      if (historyRes?.success && Array.isArray(historyRes.data)) {
-        normalizedData = normalizeOhlcRows(historyRes.data);
-      }
-      if (normalizedData.length < 2) {
-        normalizedData = normalizeOhlcRows(
-          buildClientSyntheticHistory(
-            selectedAsset,
-            chartConfig.interval,
-            chartConfig.period,
-            basePrice,
-          ),
-        );
-      }
-
-      const trimmedData = filterDataByTime(normalizedData, chartConfig.period);
-      setAssetHistory(
-        trimmedData.length > 1
-          ? trimmedData
-          : normalizedData.slice(-Math.min(200, normalizedData.length)),
-      );
-
-      setIsChartLoading(false);
+    let active = true;
+    api.news
+      .getByAssetPath(selectedAsset, { page: 1, limit: 8 })
+      .then((res) => {
+        if (active && res?.data?.length) setHeadlineNews(res.data);
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
     };
-
-    fetchDetails();
-    return () => controller.abort();
-  }, [selectedAsset, chartConfig, prices]);
-
-  const handleConfigChange = (key, value) => {
-    if (key === "period") {
-      setChartConfig({
-        period: value,
-        interval: periodToInterval(value),
-      });
-    } else {
-      setChartConfig((prev) => ({ ...prev, [key]: value }));
-    }
-  };
-
-  // -- SUB-COMPONENTS --
-  const TickerItem = ({ asset }) => {
-    const priceData = prices[asset] || prices[`C:${asset}`] || {};
-    const isUp = priceData.changePercent >= 0;
-    const isSelected = selectedAsset === asset;
-
-    return (
-      <button
-        type="button"
-        onClick={() => setSelectedAsset(asset)}
-        className={`dash-asset-chip ${isSelected ? "dash-asset-chip--active" : ""}`}
-      >
-        <span
-          className={`font-bold text-xs ${isSelected ? "text-primary" : "text-text-main"}`}
-        >
-          {asset}
-        </span>
-        <span
-          className={`text-[10px] ${isUp ? "text-emerald-500" : "text-red-500"}`}
-        >
-          {priceData.price?.toFixed(4)} ({isUp ? "+" : ""}
-          {Number(priceData.changePercent || 0).toFixed(2)}%)
-        </span>
-      </button>
-    );
-  };
+  }, [selectedAsset]);
 
   const selectedPrice =
     prices[selectedAsset] ||
     prices[`C:${selectedAsset}`] ||
-    prices[selectedAsset?.replace("/", "")];
+    prices[selectedAsset?.replace('/', '')];
 
   const analysisState = useAssetAnalysis(
     selectedAsset,
@@ -287,327 +185,437 @@ const Dashboard = () => {
     priceData: selectedPrice,
     dataQuality: analysisState.meta?.dataQuality,
     levelsLast: analysisState.technical?.modules?.levels?.last,
-    historyBars: assetHistory,
+    historyBars: [],
   });
 
-  const tickerAssets =
-    assetsList.length > 0
-      ? assetsList
-      : ["EURUSD", "GBPUSD", "USDJPY", "XAUUSD", "BTCUSD"].map((asset) => ({
-          asset,
-        }));
+  const ms = analysisState.technical?.modules?.marketStructure;
+  const swingTrend = ms?.htf?.trend;
+  const dayTrend = ms?.ltf?.trend;
+  const lv = analysisState.technical?.modules?.levels;
 
-  const formatPrice = (symbol, value) => {
-    if (value == null) return "—";
-    const d = symbol?.includes("JPY") ? 2 : symbol?.includes("BTC") ? 0 : 4;
-    return Number(value).toFixed(d);
-  };
+  const headline = useMemo(() => {
+    if (headlineNews[0]?.title) {
+      const t = headlineNews[0].title;
+      return t.length > 100 ? `${t.slice(0, 97)}…` : t;
+    }
+    if (brief?.veteranLine) return brief.veteranLine;
+    if (brief?.regime?.guidance) return brief.regime.guidance;
+    return `${selectedAsset} — live desk`;
+  }, [headlineNews, brief, selectedAsset]);
 
-  const riskLabel = risk?.environment?.replace(/_/g, " ") || "Analyzing…";
-  const riskUp = risk?.environment?.includes("RISK_ON");
+  const changePercent = displayQuote.changePercent ?? selectedPrice?.changePercent ?? 0;
+  const price = displayQuote.price ?? selectedPrice?.price;
+  const changeAbs =
+    price != null && changePercent != null
+      ? (Number(price) * Number(changePercent)) / 100
+      : null;
+
+  const support = lv?.support ?? (price ? Number(price) * 0.988 : null);
+  const resistance = lv?.resistance ?? (price ? Number(price) * 1.01 : null);
+
+  const displayAnalysisState = useMemo(() => {
+    if (!analysisState.technical) return analysisState;
+    const technical = applyLiveSessionBias(analysisState.technical, {
+      changePercent,
+      ltfTrend: dayTrend,
+      htfTrend: swingTrend,
+    });
+    return { ...analysisState, technical };
+  }, [analysisState, changePercent, dayTrend, swingTrend]);
+
+  const marketContext = useMemo(
+    () => ({
+      symbol: selectedAsset,
+      bias: displayAnalysisState.technical?.bias,
+      confidence: analysisState.technical?.confidence,
+      htfTrend: swingTrend,
+      ltfTrend: dayTrend,
+      alignment: ms?.alignment,
+      support,
+      resistance,
+      change_pct: changePercent,
+      technical_summary: displayAnalysisState.technical?.summary,
+      interval: chartConfig.interval,
+    }),
+    [
+      selectedAsset,
+      displayAnalysisState.technical,
+      swingTrend,
+      dayTrend,
+      ms?.alignment,
+      support,
+      resistance,
+      changePercent,
+      chartConfig.interval,
+    ],
+  );
+
+  const chartAnnotations = useMemo(() => {
+    const pool = [];
+    if (selectedNews?.title) pool.push(selectedNews);
+    headlineNews.forEach((n) => {
+      if (!pool.some((p) => p.title === n.title)) pool.push(n);
+    });
+    if (!pool.length) return [];
+    const positions = [
+      { left: 24, top: 28 },
+      { left: 42, top: 48 },
+      { left: 58, top: 35 },
+      { left: 72, top: 55 },
+      { left: 82, top: 40 },
+    ];
+    return pool.slice(0, 5).map((item, i) => {
+      const pos = positions[i % positions.length];
+      return {
+        id: `news-${i}-${item.title?.slice(0, 12)}`,
+        left: pos.left,
+        top: pos.top,
+        text: item.title?.length > 90 ? `${item.title.slice(0, 87)}…` : item.title,
+        sub: new Date(item.publishedAt || item.time).toLocaleString(undefined, {
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+        }),
+        item,
+      };
+    });
+  }, [headlineNews, selectedNews]);
+
+  const chartLevels = useMemo(() => {
+    if (!toggles.targets || support == null || resistance == null) return [];
+    return [
+      { price: resistance, label: `Target Level: $${Number(resistance).toFixed(2)}`, type: 'target' },
+      { price: support, label: `Pullback Area: $${Number(support).toFixed(2)}`, type: 'support' },
+    ];
+  }, [toggles.targets, resistance, support]);
+
+  const handleUpgradePrompt = useCallback(
+    (toggleKey) => {
+      const cap = FEATURE_TOGGLE_MAP[toggleKey] || 'chart.labels';
+      navigate('/dashboard/pricing', { state: { feature: cap } });
+    },
+    [navigate],
+  );
+
+  const handleNewsSelect = useCallback((item, symbol) => {
+    setSelectedNews(item);
+    if (symbol) setSelectedAsset(String(symbol).toUpperCase());
+    else if (item) setSelectedAsset(primaryAssetForNews(item, selectedAsset));
+  }, [selectedAsset]);
+
+  const handleChartMarkerSelect = useCallback(
+    (marker) => {
+      if (marker?.title || marker?.item?.title) handleNewsSelect(marker.item || marker);
+    },
+    [handleNewsSelect],
+  );
+
+  const buildChartSessionHeadline = useCallback(
+    (extra = {}) => {
+      const ch = Number(changePercent);
+      const chStr = Number.isFinite(ch) ? `${ch >= 0 ? '+' : ''}${ch.toFixed(2)}%` : '';
+      const bias = displayAnalysisState.technical?.bias || 'neutral';
+      return {
+        title:
+          extra.title ||
+          headlineNews[0]?.title ||
+          `Live ${selectedAsset} read — ${chStr} session (${bias})`,
+        description:
+          extra.description ||
+          headlineNews[0]?.description ||
+          displayAnalysisState.technical?.summary ||
+          `Chart tap analysis for ${selectedAsset} at ${price != null ? Number(price).toFixed(2) : '—'}.`,
+        publishedAt: extra.publishedAt || headlineNews[0]?.publishedAt || new Date().toISOString(),
+        source: extra.source || 'chart_session',
+        ...extra,
+      };
+    },
+    [changePercent, displayAnalysisState.technical, headlineNews, selectedAsset, price],
+  );
+
+  const handleCandleAnalysisOpen = useCallback(
+    (headline) => {
+      const payload = headline?.title ? headline : buildChartSessionHeadline(headline || {});
+      handleNewsSelect(payload);
+      setCandlePanelHeadline(payload);
+    },
+    [handleNewsSelect, buildChartSessionHeadline],
+  );
+
+  const handleChartTap = useCallback(
+    (headline) => {
+      handleCandleAnalysisOpen(headline || buildChartSessionHeadline());
+    },
+    [handleCandleAnalysisOpen, buildChartSessionHeadline],
+  );
+
+  const handleSelectAsset = useCallback((sym) => {
+    setSelectedAsset(String(sym).toUpperCase());
+  }, []);
+
+  const focusDeskCalendar = useCallback(() => {
+    setDeskTab('calendar');
+    requestAnimationFrame(() => {
+      document.querySelector('.mrkt-desk-panel-wrap')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, []);
+
+  const loadDeskIntelligence = useCallback(async () => {
+    if (!selectedAsset) return;
+    setDeskLoading(true);
+    try {
+      const [deskRes, briefRes] = await Promise.all([
+        api.desk.getIntelligence(selectedAsset),
+        api.brief.getDaily().catch(() => null),
+      ]);
+      if (deskRes?.success) setDeskData(deskRes.data);
+      if (briefRes?.success) setBrief(briefRes.data);
+    } catch {
+      /* keep last snapshot */
+    } finally {
+      setDeskLoading(false);
+    }
+  }, [selectedAsset]);
+
+  const lastTapeRefresh = useRef(0);
+  useEffect(() => {
+    const ch = Number(changePercent);
+    if (!Number.isFinite(ch) || Math.abs(ch - lastTapeRefresh.current) < 0.06) return undefined;
+    lastTapeRefresh.current = ch;
+    const t = setTimeout(() => analysisState.refresh?.(), 600);
+    return () => clearTimeout(t);
+  }, [changePercent, selectedAsset]);
+
+  useEffect(() => {
+    loadDeskIntelligence();
+    const id = setInterval(loadDeskIntelligence, 30000);
+    const offDesk = subscribeSocket('desk:snapshot', (payload) => {
+      if (payload?.data) setDeskData(payload.data);
+    });
+    return () => {
+      clearInterval(id);
+      offDesk();
+    };
+  }, [loadDeskIntelligence]);
+
+  const chartIsModel = !selectedPrice?.price && displayQuote.isModel;
+  const chartIsLive = Boolean(selectedPrice?.price) && !selectedPrice?.synthetic;
+
+  const handleCalendarEventInsight = useCallback(() => {
+    setDeskTab('calendar');
+    requestAnimationFrame(() => {
+      document.querySelector('.desk-home-cal')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, []);
+
+  const terminalClass = [
+    'mrkt-terminal',
+    chartExpanded ? 'mrkt-terminal--chart-expanded' : '',
+    headerCompact ? 'mrkt-terminal--header-compact' : '',
+    !newsOpen ? 'mrkt-terminal--news-hidden' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
-    <div className={`dash-page dash-overview-grid ${chartMode ? 'dash-page--chart-mode' : ''}`}>
+    <div className={terminalClass}>
       {fetchError && (
-        <div className="dash-empty-banner" role="alert">
+        <div className="dash-empty-banner mrkt-terminal__banner shrink-0" role="alert">
           <span className="flex items-center gap-2">
             <AlertTriangle size={16} />
             {fetchError}
           </span>
-          <button
-            type="button"
-            onClick={() => {
-              setIsGlobalLoading(true);
-              loadMarketData();
-            }}
-            className="btn-primary text-xs py-1.5 px-3"
-          >
+          <button type="button" onClick={loadMarketData} className="btn-primary text-xs py-1.5 px-3">
             <RefreshCw size={14} /> Retry
           </button>
         </div>
       )}
 
       {showWelcome && (
-        <div className="rounded-xl border border-primary/30 bg-primary/10 px-4 py-4 flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-start gap-3 min-w-0">
-            <Sparkles size={20} className="text-primary shrink-0 mt-0.5" />
-            <div>
-              <p className="font-bold text-text-main">
-                {checkoutSuccess ? 'Trial activated — welcome to Insidr' : 'Welcome to Insidr'}
-              </p>
-              <p className="text-sm text-text-muted mt-1">
-                {checkoutSuccess ? (
-                  <>
-                    Your {(user?.tier || 'pro').toUpperCase()} plan is live. Backtest and idea generation
-                    are unlocked — your watchlist drives the default chart here and in News.
-                  </>
-                ) : (
-                  <>
-                    Your watchlist drives the default chart here and in News. Start with today&apos;s ideas or
-                    tune risk in Settings.
-                  </>
-                )}
-              </p>
-            </div>
+        <div className="mrkt-welcome mrkt-terminal__banner shrink-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <Sparkles size={16} className="text-[#8b5cf6] shrink-0" />
+            <p className="text-xs text-white font-semibold">
+              {checkoutSuccess ? 'Welcome — your plan is active' : 'Your desk is ready'}
+            </p>
           </div>
-          <div className="flex flex-wrap gap-2 shrink-0">
-            <button type="button" onClick={dismissWelcome} className="btn-ghost text-xs px-3 py-2">
+          <div className="flex gap-2 shrink-0">
+            <button type="button" onClick={dismissWelcome} className="mrkt-welcome__dismiss">
               Dismiss
             </button>
-            <Link to="/dashboard/ideas" className="btn-primary text-xs px-4 py-2">
-              View ideas <ArrowRight size={14} className="inline ml-1" />
+            <Link to="/dashboard/ideas" className="mrkt-welcome__link">
+              Ideas <ArrowRight size={10} />
             </Link>
           </div>
         </div>
       )}
 
-      <SetupChecklist showWelcome={showWelcome} />
+      {!headerCompact && (
+        <MrktTerminalHeader
+          headline={headline}
+          price={price}
+          changeAbs={changeAbs}
+          changePercent={changePercent}
+          swingTrend={swingTrend}
+          dayTrend={dayTrend}
+        />
+      )}
 
-      <PageHeader
-        icon={BarChart2}
-        title="Market Overview"
-        description={
-          risk?.interpretation ||
-          "Live regime, tickers, and risk sentiment across global markets."
-        }
-        badge={
-          <span className="badge-glow text-[10px]">
-            {user?.name || "Trader"}
-          </span>
-        }
-        action={
-          <button
-            type="button"
-            onClick={() => navigate("/dashboard/ideas")}
-            className="btn-primary text-sm px-5 py-2.5"
-          >
-            View ideas <ArrowRight size={16} />
+      {headerCompact && (
+        <div className="mrkt-terminal__header-compact">
+          <p className="mrkt-terminal__header-compact-headline">{headline}</p>
+          <span className="mrkt-terminal__header-compact-price">{price != null ? Number(price).toFixed(2) : '—'}</span>
+          <button type="button" className="mrkt-desk-controls__btn" onClick={toggleHeaderCompact}>
+            Show full header
           </button>
-        }
-      />
-
-      <DailyBriefPanel
-        brief={brief}
-        loading={briefLoading}
-        onFocusClick={() => navigate("/dashboard/ideas")}
-      />
-
-      <div className="dash-overview-command-row">
-        <TopIdeasStrip />
-        <BookHeatMeter />
-      </div>
-
-      <RiskRegimeBanner />
-
-      <div className="dash-stat-grid">
-        <DashStat
-          label="System"
-          value={systemStatus.online ? "Online" : "Offline"}
-          icon={systemStatus.online ? Server : WifiIcon}
-          tone={systemStatus.online ? "success" : "danger"}
-          sub={isGlobalLoading ? "Syncing feeds…" : "API & data pipeline"}
-        />
-        <DashStat
-          label="Risk regime"
-          value={riskLabel}
-          icon={Activity}
-          tone={riskUp ? "success" : "danger"}
-          sub={
-            risk?.macroPulse?.topCountry
-              ? `${risk.macroPulse.topCountry.label} · macro ${risk.macroPulse.aggregateRisk}`
-              : "Macro environment gauge"
-          }
-        />
-        {risk?.details?.vix ? (
-          <DashStat
-            label="VIX"
-            value={risk.details.vix.level}
-            icon={Info}
-            sub="Volatility index"
-          />
-        ) : portfolio ? (
-          <DashStat
-            label="Journal P&L"
-            value={`${portfolio.totalPnl >= 0 ? '+' : ''}$${Math.abs(portfolio.totalPnl || 0).toFixed(0)}`}
-            icon={Globe}
-            tone={portfolio.totalPnl >= 0 ? 'success' : 'danger'}
-            sub={`${portfolio.totalTrades || 0} trades · ${(portfolio.winRate || 0).toFixed(0)}% win`}
-          />
-        ) : (
-          <DashStat label="Watchlist" value={assetsList.length || "—"} icon={Globe} sub="Tracked instruments" />
-        )}
-        <DashStat
-          label="Open / Symbol"
-          value={portfolio?.openPositions != null ? `${portfolio.openPositions} open` : selectedAsset || "—"}
-          icon={Zap}
-          tone="primary"
-          sub={`${selectedAsset} · ${chartConfig.period}`}
-        />
-      </div>
-
-      <div className="dash-ticker-rail">
-        <div className="flex animate-marquee hover:pause whitespace-nowrap h-full items-center">
-          {[...tickerAssets, ...tickerAssets].map((item, idx) => (
-            <TickerItem key={`${item.asset}-${idx}`} asset={item.asset} />
-          ))}
-        </div>
-        <div className="dash-ticker-rail__fade-l" />
-        <div className="dash-ticker-rail__fade-r" />
-        <style>{`@keyframes marquee { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } } .animate-marquee { animation: marquee 60s linear infinite; }`}</style>
-      </div>
-
-      <AssetGrid
-        assetsList={assetsList}
-        prices={prices}
-        selectedAsset={selectedAsset}
-        onSelectAsset={setSelectedAsset}
-        viewAll={viewAllAssets}
-        onToggleViewAll={() => setViewAllAssets((v) => !v)}
-      />
-
-      {selectedAsset && (
-        <div className="flex flex-wrap items-center gap-3 -mt-4">
-          <Link
-            to={`/dashboard/news?asset=${encodeURIComponent(selectedAsset)}`}
-            className="text-xs font-bold text-primary hover:underline"
-          >
-            News for {selectedAsset}
-          </Link>
-          <span className="text-text-muted text-xs">·</span>
-          <Link
-            to="/dashboard/economy"
-            className="text-xs font-bold text-text-muted hover:text-primary"
-          >
-            Macro pulse
-          </Link>
-          {risk?.macroPulse?.topCountry && (
-            <>
-              <span className="text-text-muted text-xs">·</span>
-              <span className="text-[10px] text-text-muted">
-                Global macro heat: {risk.macroPulse.aggregateRisk}
-              </span>
-            </>
-          )}
         </div>
       )}
 
-      <DashPanel className="w-full" bodyClassName="p-0 !overflow-visible">
-        <div className="dash-market-layout">
-        <AssetAnalysisPanel
-          symbol={selectedAsset}
-          interval={chartConfig.interval}
-          period={chartConfig.period}
-          risk={risk}
-          analysisState={analysisState}
-        />
+      <div className="mrkt-terminal__workspace">
+        <div className="mrkt-terminal__chart-col">
+          <div className="mrkt-chart-viewport">
+            <MrktChartToolbar
+              symbol={selectedAsset}
+              interval={chartConfig.interval}
+              onTimeframeChange={(interval, period) => setChartConfig({ interval, period })}
+              onAssetPicker={() => setPickerOpen(true)}
+              onAddSymbol={() => setPickerOpen(true)}
+              toggles={toggles}
+              onToggle={(key) => setToggles((p) => ({ ...p, [key]: !p[key] }))}
+              newsOpen={newsOpen}
+              onNewsToggle={toggleNewsOpen}
+              access={access}
+              onUpgrade={handleUpgradePrompt}
+              layout={{
+                chartExpanded,
+                newsOpen,
+                headerCompact,
+                onToggleChart: toggleChartExpanded,
+                onToggleNews: toggleNewsOpen,
+                onToggleHeader: toggleHeaderCompact,
+              }}
+            />
 
-        <div className="dash-market-chart p-5 lg:p-6">
-          <div className="dash-live-quote">
-            <div>
-              <p className="text-[10px] uppercase tracking-wider text-text-muted font-bold mb-1 flex items-center gap-2">
-                <span>{selectedAsset}</span>
-                <span
-                  className={`dash-live-quote__badge ${
-                    displayQuote.isModel
-                      ? "dash-live-quote__badge--model"
-                      : "dash-live-quote__badge--live"
-                  }`}
-                >
-                  {displayQuote.label}
-                </span>
-              </p>
-              <p className="dash-live-quote__price">
-                {formatPrice(selectedAsset, displayQuote.price)}
-              </p>
-            </div>
-            {displayQuote.price != null && (
-              <span
-                className={`dash-live-quote__change ${
-                  displayQuote.changePercent >= 0
-                    ? "dash-live-quote__change--up"
-                    : "dash-live-quote__change--down"
-                }`}
+            <div
+              className={`mrkt-chart-main ${candlePanelHeadline ? 'mrkt-chart-main--with-drawer' : ''}`}
+            >
+              <div className="mrkt-chart-workspace">
+              <div
+                className={`mrkt-chart-stage ${candlePanelHeadline ? 'mrkt-chart-stage--narrow' : ''}`}
               >
-                {displayQuote.changePercent >= 0 ? "+" : ""}
-                {Number(displayQuote.changePercent || 0).toFixed(2)}%
-              </span>
-            )}
-          </div>
-
-          {displayQuote.showTvDisclaimer && (
-            <p className="dash-tv-disclaimer">
-              TradingView shows live broker quotes. Analysis and price above use model OHLC while
-              the API feed is rate-limited.
-            </p>
-          )}
-
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-3 gap-3">
-            <div className="flex flex-col">
-              <h4 className="text-xs text-text-muted uppercase tracking-wider flex items-center gap-2">
-                <Clock size={12} /> {chartConfig.period} · TradingView
-              </h4>
-              {assetHistory.length > 0 && (
-                <span className="text-[10px] text-text-muted font-mono mt-1">
-                  Updated{" "}
-                  {new Date(
-                    Math.max(...assetHistory.map((d) => d.time * 1000)),
-                  ).toLocaleString()}
-                </span>
-              )}
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <button
-                type="button"
-                onClick={toggleChartMode}
-                className={`text-xs font-bold px-2.5 py-1.5 rounded-lg border transition-colors inline-flex items-center gap-1.5 ${
-                  chartMode
-                    ? 'border-primary/40 bg-primary/10 text-primary'
-                    : 'border-border text-text-muted hover:text-text-main'
-                }`}
-                title={chartMode ? 'Exit chart mode' : 'Collapse nav and expand chart'}
-              >
-                {chartMode ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-                {chartMode ? 'Exit chart mode' : 'Chart mode'}
-              </button>
-              <DashSelect
-                label="Interval"
-                value={chartConfig.interval}
-                onChange={(e) => handleConfigChange("interval", e.target.value)}
-                wrapperClassName="w-[100px]"
-                className="!py-1.5 !text-xs"
-                options={CHART_INTERVALS.map((opt) => ({ value: opt, label: opt }))}
-              />
-              <DashSelect
-                label="Period"
-                value={chartConfig.period}
-                onChange={(e) => handleConfigChange("period", e.target.value)}
-                wrapperClassName="w-[90px]"
-                className="!py-1.5 !text-xs"
-                options={CHART_PERIODS.map((opt) => ({ value: opt, label: opt }))}
-              />
-            </div>
-          </div>
-
-          <div className="dash-chart-zone">
-            {selectedAsset ? (
-              <TradeChart
-                key={`${selectedAsset}-${chartConfig.interval}`}
-                symbol={selectedAsset}
-                interval={chartConfig.interval}
-                fill
-                interactive
-                modelMode={displayQuote.isModel}
-                quotePrice={displayQuote.price}
-              />
-            ) : (
-              <div className="flex flex-col items-center justify-center text-text-muted text-sm gap-3 p-6 text-center min-h-[440px]">
-                <p>Select an asset from Major Assets above.</p>
+                <div className="dash-chart-zone dash-chart-zone--analysis-tap">
+                  {selectedAsset ? (
+                    <>
+                      <MrktChartLiveRibbon
+                        symbol={selectedAsset}
+                        price={price}
+                        changePercent={changePercent}
+                        bias={displayAnalysisState.technical?.bias}
+                        isLive={chartIsLive}
+                        interval={chartConfig.interval}
+                      />
+                      <TradeChart
+                        key={`${selectedAsset}-${chartConfig.interval}`}
+                        symbol={selectedAsset}
+                        interval={chartConfig.interval}
+                        levels={chartLevels}
+                        fill
+                        interactive
+                        modelMode={displayQuote.isModel}
+                        quotePrice={displayQuote.price}
+                      />
+                      <MrktChartOverlays
+                        showLabels={toggles.labels && access.canLabels}
+                        showTargets={toggles.targets && access.canTargets}
+                        showCalendarEvents={toggles.calendar && access.canCalendar}
+                        price={price}
+                        support={support ?? price}
+                        resistance={resistance ?? price}
+                        symbol={selectedAsset}
+                        annotations={chartAnnotations}
+                        calendarEvents={chartCalendarEvents}
+                        onMarkerSelect={handleChartMarkerSelect}
+                        onCandleOpen={handleCandleAnalysisOpen}
+                        onChartTap={handleChartTap}
+                        candleAnalysisOpen={Boolean(candlePanelHeadline)}
+                      />
+                      {chartIsModel && (
+                        <div className="mrkt-chart-data-badge" role="status">
+                          Awaiting live quote — showing model structure until tape connects
+                        </div>
+                      )}
+                      {toggles.calendar && access.canCalendar && (
+                        <MrktChartEventBadge symbol={selectedAsset} onClick={focusDeskCalendar} />
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-text-muted text-sm">
+                      Select an instrument
+                    </div>
+                  )}
+                </div>
               </div>
-            )}
+
+              {candlePanelHeadline && (
+                <MrktCandleAnalysisPanel
+                  symbol={selectedAsset}
+                  headline={candlePanelHeadline}
+                  marketContext={marketContext}
+                  relatedNewsPool={headlineNews}
+                  prices={prices}
+                  canAiInsight={access.canNewsAi}
+                  onClose={() => setCandlePanelHeadline(null)}
+                  onSelectAsset={handleSelectAsset}
+                />
+              )}
+              </div>
+            </div>
+
+          </div>
+
+          <div className="mrkt-desk-panel-wrap">
+            <InsidrDeskBiasPanel
+              symbol={selectedAsset}
+              selectedNews={selectedNews}
+              analysisState={displayAnalysisState}
+              prices={prices}
+              brief={brief}
+              activeTab={deskTab}
+              onTabChange={setDeskTab}
+              deskData={deskData}
+              deskLoading={deskLoading}
+              onDeskRefresh={loadDeskIntelligence}
+              onCalendarEventInsight={handleCalendarEventInsight}
+              onSelectAsset={handleSelectAsset}
+            />
           </div>
         </div>
-        </div>
-      </DashPanel>
+
+        {newsOpen && (
+          <MrktNewsFeed
+            asset={selectedAsset}
+            canAiInsight={access.canNewsAi}
+            onUpgrade={handleUpgradePrompt}
+            onSelectAsset={handleSelectAsset}
+            selectedNews={selectedNews}
+            onNewsSelect={handleNewsSelect}
+            marketContext={marketContext}
+            prices={prices}
+          />
+        )}
+      </div>
+
+      {pickerOpen && (
+        <MrktAssetPicker
+          assets={assetsList}
+          prices={prices}
+          selected={selectedAsset}
+          onSelect={setSelectedAsset}
+          onClose={() => setPickerOpen(false)}
+        />
+      )}
+
     </div>
   );
 };

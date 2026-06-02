@@ -57,6 +57,7 @@ export function logEnvBoot() {
     cryptopanic: envBool("CRYPTOPANIC_API_KEY"),
     twelve: envBool("TWELVE_DATA_API_KEY"),
     anthropic: envBool("ANTHROPIC_API_KEY"),
+    stripe: envBool("STRIPE_SECRET_KEY"),
   };
   console.log("[env] API keys:", flags);
 }

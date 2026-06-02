@@ -11,7 +11,7 @@ export function hasAnthropicKey() {
   return Boolean(process.env.ANTHROPIC_API_KEY?.trim());
 }
 
-export async function chatCompletion({ system, user, maxTokens = 2048 }) {
+export async function chatCompletion({ system, user, maxTokens = 2048, temperature }) {
   const key = process.env.ANTHROPIC_API_KEY?.trim();
   if (!key) throw new Error("ANTHROPIC_API_KEY not configured");
 
@@ -28,6 +28,7 @@ export async function chatCompletion({ system, user, maxTokens = 2048 }) {
     body: JSON.stringify({
       model,
       max_tokens: maxTokens,
+      ...(temperature != null ? { temperature } : {}),
       system: system || "You are Insidr, an institutional trading intelligence assistant.",
       messages: [{ role: "user", content: user }],
     }),
@@ -58,6 +59,47 @@ export async function chatCompletion({ system, user, maxTokens = 2048 }) {
   } catch {
     // ignore telemetry failures
   }
+  return text.trim();
+}
+
+/**
+ * Multi-turn Claude — used for Insidr news analysis chat.
+ * @param {{ system?: string, messages: { role: 'user'|'assistant', content: string }[], maxTokens?: number }} opts
+ */
+export async function chatCompletionMulti({ system, messages, maxTokens = 1024, temperature }) {
+  const key = process.env.ANTHROPIC_API_KEY?.trim();
+  if (!key) throw new Error("ANTHROPIC_API_KEY not configured");
+
+  const model =
+    process.env.ANTHROPIC_MODEL?.trim() || "claude-sonnet-4-20250514";
+
+  const res = await fetch(API_URL, {
+    method: "POST",
+    headers: {
+      "x-api-key": key,
+      "anthropic-version": VERSION,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({
+      model,
+      max_tokens: maxTokens,
+      ...(temperature != null ? { temperature } : {}),
+      system:
+        system ||
+        "You are Insidr, an institutional trading intelligence assistant.",
+      messages: (messages || []).map((m) => ({
+        role: m.role === "assistant" ? "assistant" : "user",
+        content: String(m.content || ""),
+      })),
+    }),
+  });
+
+  const json = await res.json();
+  if (!res.ok) {
+    throw new Error(json?.error?.message || `Anthropic HTTP ${res.status}`);
+  }
+
+  const text = json.content?.find((c) => c.type === "text")?.text || "";
   return text.trim();
 }
 

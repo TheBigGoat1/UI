@@ -49,7 +49,7 @@ const AIChatWidget = () => {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
+    <div className="flex flex-col items-end">
       {/* The Expanded Chat Panel */}
       {isOpen && (
         <div className="mb-4 w-[350px] sm:w-[400px] h-[500px] max-h-[70vh] glass-panel rounded-2xl shadow-card flex flex-col overflow-hidden animate-fade-in border-primary/20">
@@ -138,11 +138,13 @@ const AIChatWidget = () => {
       )}
 
       {/* The Floating Toggle Button */}
-      <button 
+      <button
+        type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-14 h-14 btn-primary rounded-full shadow-glow-primary flex items-center justify-center !p-0"
+        className="mrkt-chat-fab"
+        aria-label={isOpen ? 'Close chat' : 'Open AI chat'}
       >
-        {isOpen ? <X size={24} /> : <MessageSquare size={24} />}
+        {isOpen ? <X size={24} strokeWidth={2.5} /> : <MessageSquare size={24} strokeWidth={2} />}
       </button>
     </div>
   );

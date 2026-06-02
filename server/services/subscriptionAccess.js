@@ -1,5 +1,7 @@
 import { query } from "../db.js";
 import { TRIAL_DAYS } from "../config/plans.js";
+import { buildCapabilitiesMap } from "../config/features.js";
+import { getBillingModeConfig } from "../config/billingMode.js";
 import { assertStripe, mapSubscriptionToUserFields } from "./stripe.js";
 
 const PAID_STATUSES = new Set(["active", "trialing"]);
@@ -28,28 +30,39 @@ export function hasPaidAccess(user) {
   return true;
 }
 
-export const CAPABILITIES = {
-  "ideas.generate": ["pro", "elite"],
-  "backtest.run": ["pro", "elite"],
-  "chat.advanced": ["elite"],
-  "alerts.manage": ["pro", "elite"],
-  "broker.sync": ["pro", "elite"],
-  "admin.observe": ["admin", "super_admin", "support_admin"],
-};
+export const CAPABILITIES = buildCapabilitiesMap();
 
 export function userCapabilities(user) {
   const tier = user?.tier || "free";
   const status = user?.subscription_status || "none";
   const paid = hasPaidAccess(user);
+  const billing = getBillingModeConfig();
   const caps = {
     tier,
     status,
     paid,
+    billing,
     available: [],
   };
 
   for (const [cap, tiers] of Object.entries(CAPABILITIES)) {
-    if (tiers.includes(tier) && (tier === "free" || paid || cap === "admin.observe")) {
+    const isAdminCap = cap === "admin.observe";
+    const isFreeTierCap = tiers.includes("free");
+    const tierOk = tiers.includes(tier);
+
+    if (!tierOk) continue;
+
+    if (isAdminCap) {
+      caps.available.push(cap);
+      continue;
+    }
+
+    if (isFreeTierCap) {
+      caps.available.push(cap);
+      continue;
+    }
+
+    if (paid || (!billing.locks_enabled && process.env.NODE_ENV !== "production")) {
       caps.available.push(cap);
     }
   }

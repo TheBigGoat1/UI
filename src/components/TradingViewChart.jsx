@@ -229,9 +229,11 @@ const TradingViewChart = ({
         <div className="tv-levels-overlay" aria-label="Trade levels">
           {visibleLevels.map((level) => {
             const price = formatLevelPrice(level.price);
+            const labelLower = (level.label || '').toLowerCase();
             const isStop =
-              level.type === 'RESISTANCE' || level.label?.toLowerCase().includes('stop');
-            const isTarget = level.label?.toLowerCase().includes('target');
+              level.type === 'RESISTANCE' || level.type === 'support' || labelLower.includes('pullback');
+            const isTarget =
+              level.type === 'target' || labelLower.includes('target');
             return (
               <span
                 key={`${level.label}-${price}`}

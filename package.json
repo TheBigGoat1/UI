@@ -15,6 +15,7 @@
     "setup:full": "npm install && npm run db:setup && npm run db:seed",
     "server:kill": "node server/scripts/kill-dev-ports.mjs",
     "dev:all": "node server/scripts/kill-dev-ports.mjs && concurrently \"npm run server\" \"npm run dev\"",
+    "stripe:check": "node server/scripts/stripe-check.mjs",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"

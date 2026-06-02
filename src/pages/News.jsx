@@ -323,7 +323,7 @@ const News = () => {
   };
 
   return (
-    <div className="dash-page space-y-8 h-full flex flex-col">
+    <div className="dash-page mrkt-news-page space-y-6 h-full flex flex-col">
       <PageHeader
         icon={Newspaper}
         title="Intelligence Feed"
@@ -451,24 +451,24 @@ const News = () => {
          </div>
       )}
 
-      <div className="flex-1 min-h-0 bg-surface border border-border rounded-lg flex flex-col overflow-hidden">
-        <div className="p-4 border-b border-border flex justify-between items-center bg-background/50 shadow-sm z-10">
-          <h2 className="font-bold text-sm text-text-main flex items-center gap-2">
-            <TrendingUp size={16} className="text-primary" /> {searchQuery ? `Search Results: "${searchQuery}"` : viewMode === 'latest' ? 'Global Headlines' : `${selectedAsset} Stream`}
+      <div className="mrkt-news flex-1 min-h-[480px]">
+        <div className="mrkt-news__head">
+          <h2 className="mrkt-news__title">
+            {searchQuery ? `Search: ${searchQuery}` : viewMode === 'latest' ? 'News Feed' : `${selectedAsset} Stream`}
           </h2>
-          <div className="flex items-center gap-2">
+          <div className="mrkt-news__actions">
             {(loading || isFetchingMore) && <RefreshCw size={14} className="animate-spin text-text-muted" />}
-            <span className="text-[10px] text-text-muted font-mono">{newsFeed.length} Articles</span>
+            <span className="text-[10px] text-text-muted font-mono mr-1">{newsFeed.length}</span>
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-0 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent" onScroll={handleScroll}>
+        <div className="mrkt-news__scroll custom-scrollbar" onScroll={handleScroll}>
            {loading && page === 1 ? (
              <div className="p-12 text-center text-text-muted flex flex-col items-center"><RefreshCw size={24} className="animate-spin mb-2 opacity-50"/><span className="text-sm">Fetching intelligence...</span></div>
            ) : newsFeed.length === 0 ? (
              <div className="p-12 text-center text-text-muted text-sm">No articles found. Try adjusting your search or filter.</div>
            ) : (
-             <div className="divide-y divide-border pb-4">
+             <div className="pb-4">
                {newsFeed?.map((item, idx) => {
                  const title = item.title;
                  const summary = item.description || item.summary;
@@ -485,9 +485,9 @@ const News = () => {
                  const logoUrl = getDomainLogo(url, source);
 
                  return (
-                   <div key={`${idx}-${timeStr}`} className="p-4 hover:bg-surface-hover transition-colors group">
-                     <div className="flex justify-between items-start gap-3">
-                       <div className="flex-1">
+                   <article key={`${idx}-${timeStr}`} className="mrkt-news__item group">
+                     <div className="mrkt-news__item-row">
+                       <div className="mrkt-news__item-body">
                           <div className="flex items-center gap-2 mb-1">
                              
                              {/* Flags & Favicons integrated into the Source badge */}
@@ -518,7 +518,7 @@ const News = () => {
                              </span>
                           </div>
                           
-                          <h3 className="text-sm font-medium text-text-main group-hover:text-primary transition-colors leading-snug mt-1.5">{title}</h3>
+                          <h3 className="mrkt-news__headline mt-1">{title}</h3>
                           {relatedAssets.length > 0 && viewMode === 'latest' && (
                             <div className="flex flex-wrap gap-1 mt-1.5">
                               {relatedAssets.slice(0, 4).map((sym) => (
@@ -533,7 +533,7 @@ const News = () => {
                               ))}
                             </div>
                           )}
-                          {summary && <p className="text-xs text-text-muted mt-1 line-clamp-2 max-w-3xl">{summary}</p>}
+                          {summary && <p className="mrkt-news__summary">{summary}</p>}
                           
                           <div className="mt-2 flex items-center gap-4 opacity-0 group-hover:opacity-100 transition-opacity">
                              {url && (<a href={url} target="_blank" rel="noopener noreferrer" className="text-[10px] font-bold text-primary flex items-center gap-1 hover:underline">READ FULL SOURCE <ArrowRight size={10}/></a>)}
@@ -548,7 +548,7 @@ const News = () => {
                           </div>
                        )}
                      </div>
-                   </div>
+                   </article>
                  );
                })}
                {isFetchingMore && (<div className="p-6 text-center text-text-muted flex flex-col items-center"><RefreshCw size={16} className="animate-spin mb-2 opacity-50"/><span className="text-xs">Loading more...</span></div>)}

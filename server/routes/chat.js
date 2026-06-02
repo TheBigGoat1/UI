@@ -1,9 +1,13 @@
 import { Router } from "express";
-import { optionalAuth } from "../middleware/auth.js";
-import { hasCapability } from "../services/subscriptionAccess.js";
+import { optionalAuth, requireAuth } from "../middleware/auth.js";
+import { hasCapability, capabilityUpgradeHint } from "../services/subscriptionAccess.js";
 import { getAllPrices } from "../services/marketData.js";
 import { cached } from "../services/cache.js";
 import { chatCompletion, hasAnthropicKey } from "../services/anthropic.js";
+import {
+  analyzeNewsHeadline,
+  continueNewsAnalysis,
+} from "../services/newsAnalysis.js";
 
 const router = Router();
 
@@ -68,6 +72,102 @@ Answer in 2-4 concise sentences as an institutional trading coach.`,
         : null,
     },
   });
+});
+
+/** Insidr Analysis — initial Claude desk note for a headline */
+router.post("/news-insight", requireAuth, async (req, res) => {
+  if (!hasCapability(req.user, "news.ai_insight")) {
+    return res.status(403).json({
+      success: false,
+      error: "Insidr Analysis requires Pro or Elite.",
+      code: "capability_required",
+      capability: "news.ai_insight",
+      upgrade: capabilityUpgradeHint("news.ai_insight"),
+    });
+  }
+
+  const title = String(req.body.title || "").trim();
+  const summary = String(req.body.summary || req.body.description || "").trim();
+  const asset = String(req.body.asset || "XAUUSD").toUpperCase();
+  const symbols = Array.isArray(req.body.symbols) ? req.body.symbols : [];
+  const marketContext = req.body.marketContext || null;
+  const articleId = req.body.articleId || req.body.id || null;
+  const source = req.body.source || null;
+  const publishedAt = req.body.publishedAt || req.body.time || null;
+  const impact = req.body.impact || req.body.category || null;
+  const sentimentScore =
+    req.body.sentimentScore != null
+      ? Number(req.body.sentimentScore)
+      : req.body.sentiment_score != null
+        ? Number(req.body.sentiment_score)
+        : null;
+
+  try {
+    const result = await analyzeNewsHeadline({
+      title,
+      summary,
+      asset,
+      symbols,
+      marketContext,
+      articleId,
+      source,
+      publishedAt,
+      impact,
+      sentimentScore: Number.isFinite(sentimentScore) ? sentimentScore : null,
+    });
+    return res.json({
+      success: true,
+      data: {
+        ...result,
+        reply: result.analysis,
+        asset,
+        claude_configured: hasAnthropicKey(),
+      },
+    });
+  } catch (err) {
+    console.error("[chat] news-insight", err);
+    res.status(500).json({ success: false, error: err.message || "Analysis failed." });
+  }
+});
+
+/** Insidr Analysis — follow-up chat on the same headline */
+router.post("/news-insight/chat", requireAuth, async (req, res) => {
+  if (!hasCapability(req.user, "news.ai_insight")) {
+    return res.status(403).json({
+      success: false,
+      error: "Insidr Analysis chat requires Pro or Elite.",
+      code: "capability_required",
+      capability: "news.ai_insight",
+      upgrade: capabilityUpgradeHint("news.ai_insight"),
+    });
+  }
+
+  const title = String(req.body.title || "").trim();
+  const summary = String(req.body.summary || req.body.description || "").trim();
+  const asset = String(req.body.asset || "XAUUSD").toUpperCase();
+  const symbols = Array.isArray(req.body.symbols) ? req.body.symbols : [];
+  const messages = Array.isArray(req.body.messages) ? req.body.messages : [];
+
+  if (!messages.length) {
+    return res.status(400).json({ success: false, error: "messages array required." });
+  }
+
+  try {
+    const result = await continueNewsAnalysis({
+      title,
+      summary,
+      asset,
+      symbols,
+      messages,
+    });
+    return res.json({
+      success: true,
+      data: { ...result, asset, claude_configured: hasAnthropicKey() },
+    });
+  } catch (err) {
+    console.error("[chat] news-insight/chat", err);
+    res.status(500).json({ success: false, error: err.message || "Chat failed." });
+  }
 });
 
 export default router;

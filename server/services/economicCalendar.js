@@ -207,16 +207,30 @@ export function generateMacroCalendar(fromDate, toDate) {
       }
     }
 
-    // FOMC
+    // FOMC — include policy rate consensus fields for desk rate path + trend sparklines
     const fomcDates = FOMC_BY_YEAR[year] || [];
     for (const iso of fomcDates) {
       const [y, m, d] = iso.split("-").map(Number);
       if (m === month && y === year) {
+        const fedRate =
+          y >= 2026 ? "4.25%" : y >= 2025 ? "4.50%" : y >= 2024 ? "5.25%" : "5.50%";
+        const fedPrev =
+          y >= 2026 && m >= 6 ? "4.50%" : y >= 2025 ? "4.50%" : y >= 2024 ? "5.50%" : "5.50%";
+        pushEvent(events, {
+          country: "US",
+          name: "FOMC Rate Decision",
+          impact: "HIGH",
+          time: atUtc(y, m, d, 19, 0),
+          forecast: fedRate,
+          previous: fedPrev,
+        });
         pushEvent(events, {
           country: "US",
           name: "FOMC Statement",
           impact: "HIGH",
           time: atUtc(y, m, d, 19, 0),
+          forecast: fedRate,
+          previous: fedPrev,
         });
         pushEvent(events, {
           country: "US",

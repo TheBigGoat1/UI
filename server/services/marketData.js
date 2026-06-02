@@ -8,6 +8,7 @@ import {
   fetchBinanceTickersForAssets,
   isBinanceAsset,
 } from "./binance.js";
+import { applyDeskPriceAliases } from "../utils/deskSymbols.js";
 
 const TWELVE_KEY = () => env("TWELVE_DATA_API_KEY") || env("VITE_TWELVE_DATA_API_KEY");
 
@@ -257,7 +258,19 @@ export async function getAllPrices() {
         }
       }),
     );
-    return out;
+
+    if (!out.DXY?.price) {
+      try {
+        const dxy = await fetchYahooQuoteChange("DX-Y=F");
+        if (dxy?.price != null) {
+          out.DXY = { ...dxy, source: "yahoo" };
+        }
+      } catch {
+        /* optional */
+      }
+    }
+
+    return applyDeskPriceAliases(out);
   });
 }
 
@@ -452,4 +465,27 @@ export function getAssetsList() {
     class: assetClass,
     dataSource: binance ? "binance" : "yahoo",
   }));
+}
+
+/** Live quote + session % change from Yahoo (no synthetic). */
+export async function fetchYahooQuoteChange(yahooSymbol) {
+  const bars = await fetchYahooChart(yahooSymbol, "1d", "5d");
+  if (bars.length < 2) return null;
+  const last = bars[bars.length - 1];
+  const prev = bars[bars.length - 2];
+  const change = last.close - prev.close;
+  const changePercent = prev.close ? (change / prev.close) * 100 : 0;
+  return {
+    price: last.close,
+    change,
+    changePercent,
+    updatedAt: new Date(last.time * 1000).toISOString(),
+    source: "yahoo",
+  };
+}
+
+/** Historical closes for desk charts (Yahoo). */
+export async function fetchYahooHistorySeries(yahooSymbol, interval = "1day", range = "5y") {
+  const bars = await fetchYahooChart(yahooSymbol, interval, range);
+  return bars.filter((b) => b.close != null);
 }

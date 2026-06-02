@@ -1,14 +1,23 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { Check, Zap, Crown, Loader2, Sparkles, AlertTriangle, CreditCard, CheckCircle2 } from 'lucide-react';
+import { Check, Zap, Crown, Loader2, Sparkles, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { api } from '../services/api/api';
 import PageHeader from '../components/layout/PageHeader';
 import PlanFeatureMatrix from '../components/billing/PlanFeatureMatrix.jsx';
+import BillingTestPanel from '../components/billing/BillingTestPanel.jsx';
+import { useFeatureAccess } from '../hooks/useFeatureAccess.js';
+
+const PRO_MRKT_FEATURES = [
+  'Chart labels & callouts',
+  'Target & pullback levels',
+  'Calendar on chart',
+  'News AI insights',
+];
 
 const PRO_FEATURES = [
+  ...PRO_MRKT_FEATURES,
   'Live AI trade ideas',
-  'Macro sentiment & news',
   'Strategy backtest lab',
   'Web journal & analytics',
   'Economic calendar',
@@ -22,10 +31,10 @@ const ELITE_FEATURES = [
 ];
 
 const FREE_FEATURES = [
-  'Overview & live prices',
-  'Ideas (limited)',
-  'Journal (manual entries)',
-  'Calendar & news browse',
+  'Insidr desk — chart & live price',
+  'News feed (read)',
+  'Swing / day sentiment',
+  'Journal & calendar browse',
 ];
 
 const Pricing = () => {
@@ -36,15 +45,10 @@ const Pricing = () => {
   const [loadingPlan, setLoadingPlan] = useState(null);
   const [checkoutError, setCheckoutError] = useState('');
   const [checkoutNotice, setCheckoutNotice] = useState('');
-  const [billingHealth, setBillingHealth] = useState(null);
+  const access = useFeatureAccess();
+  const billingHealth = access.billingHealth;
 
   const isDev = import.meta.env.DEV;
-
-  useEffect(() => {
-    api.billing.health().then((res) => {
-      if (res?.success) setBillingHealth(res.data);
-    }).catch(() => {});
-  }, []);
 
   useEffect(() => {
     const sessionId = searchParams.get('session_id');
@@ -141,21 +145,14 @@ const Pricing = () => {
         description="7-day free trial — card required, no charge until trial ends. Billing starts automatically after day 7."
       />
 
-      <div className="mb-6 p-4 rounded-xl border border-primary/25 bg-primary/5 flex gap-3 text-sm">
-        <CreditCard size={20} className="text-primary shrink-0 mt-0.5" />
-        <div className="text-text-muted leading-relaxed">
-          <p className="font-bold text-text-main mb-1">How billing works</p>
-          <ul className="list-disc list-inside space-y-1 text-xs">
-            <li>Days 1–7: full access, $0 charged</li>
-            <li>After trial: Stripe charges your card automatically</li>
-            <li>If payment fails: access ends and you are signed out until you subscribe</li>
-            <li>Users can pay with normal personal cards (no business account needed)</li>
-          </ul>
-        </div>
-      </div>
-      <p className="text-xs text-text-muted -mt-3 mb-4">
-        Legal: <Link to="/legal/terms">Terms</Link> · <Link to="/legal/privacy">Privacy</Link> ·{' '}
-        <Link to="/legal/cookies">Cookies</Link> · <Link to="/legal/risk">Risk Disclosure</Link>
+      <BillingTestPanel health={billingHealth} tier={access.tier} className="mb-4" />
+
+      <p className="text-xs text-text-muted mb-4">
+        7-day trial, then billed automatically. Card <code className="text-[#a78bfa]">4242…</code> in
+        test mode.{' '}
+        <Link to="/legal/terms" className="text-primary hover:underline">
+          Terms
+        </Link>
       </p>
 
       {checkoutNotice && (

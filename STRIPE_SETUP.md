@@ -12,11 +12,16 @@ Aligned with **Developer Specification v2.0**:
 Add to `.env` (never commit real keys to git):
 
 ```env
+# Production-grade subscription locks while using Stripe test keys
+BILLING_ENFORCEMENT=production
+BILLING_STRIPE_MODE=test
 STRIPE_SECRET_KEY=sk_test_...
 STRIPE_WEBHOOK_SECRET=whsec_...
 VITE_STRIPE_PUBLISHABLE_KEY=pk_test_...
 FRONTEND_URL=http://localhost:5173
 ```
+
+See `MRKT_HYBRID_PLAN.md` for MRKT feature ↔ tier mapping.
 
 ## Database
 

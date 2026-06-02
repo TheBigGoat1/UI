@@ -2,7 +2,29 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Lock, Sparkles } from 'lucide-react';
 
+import { featureMeta } from '../../config/features.js';
+
 const FEATURE_COPY = {
+  'chart.labels': {
+    title: 'Chart labels are a Pro feature',
+    body: 'Insidr callouts and session notes on your chart. Start a 7-day test trial — production locks apply.',
+    required: 'Pro or Elite',
+  },
+  'chart.targets': {
+    title: 'Targets & pullbacks require Pro',
+    body: 'Target lines and pullback zones on the Insidr desk.',
+    required: 'Pro or Elite',
+  },
+  'chart.calendar': {
+    title: 'Calendar overlays are Pro',
+    body: 'High-impact economic events on the chart timeline.',
+    required: 'Pro or Elite',
+  },
+  'news.ai_insight': {
+    title: 'News AI insights require Pro',
+    body: 'Brain icons open AI context on headline impact.',
+    required: 'Pro or Elite',
+  },
   'backtest.run': {
     title: 'Backtest lab is a Pro feature',
     body: 'Walk-forward simulations use the same engine as live ideas. Upgrade to validate setups before you size up.',
@@ -28,7 +50,16 @@ const UpgradeGate = ({
   devTrialLoading = false,
   showDevTrial = false,
 }) => {
-  const copy = FEATURE_COPY[feature] || FEATURE_COPY['backtest.run'];
+  const meta = featureMeta(feature);
+  const copy =
+    FEATURE_COPY[feature] ||
+    (meta
+      ? {
+          title: meta.upgradeTitle || `${meta.label} requires upgrade`,
+          body: meta.upgradeBody || 'Upgrade to unlock this Insidr feature.',
+          required: meta.tiers?.includes('elite') && !meta.tiers?.includes('pro') ? 'Elite' : 'Pro or Elite',
+        }
+      : FEATURE_COPY['backtest.run']);
 
   if (compact) {
     return (

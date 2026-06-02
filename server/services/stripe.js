@@ -105,6 +105,9 @@ export async function createCheckoutSession({
   const frontend = getFrontendUrl();
   const productName = planId === "elite" ? "Insidr Elite" : "Insidr Pro";
 
+  const sessionQuery = successPath.includes("?") ? "&" : "?";
+  const successUrl = `${frontend}${successPath}${sessionQuery}session_id={CHECKOUT_SESSION_ID}`;
+
   const session = await stripeClient.checkout.sessions.create({
     mode: "subscription",
     customer: customerId,
@@ -142,7 +145,7 @@ export async function createCheckoutSession({
       plan_id: planId,
       billing_cycle: billingCycle,
     },
-    success_url: `${frontend}${successPath}?session_id={CHECKOUT_SESSION_ID}`,
+    success_url: successUrl,
     cancel_url: `${frontend}${cancelPath}`,
     allow_promotion_codes: true,
     billing_address_collection: "auto",

@@ -64,13 +64,15 @@ apiClient.interceptors.response.use(
       error.code === 'ECONNREFUSED' ||
       error.code === 'ERR_NETWORK' ||
       error.message?.includes('Network Error');
+    const apiPort =
+      import.meta.env.VITE_API_URL?.match(/:(\d+)/)?.[1] || '3001';
     return Promise.reject({
       success: false,
       error: offline
-        ? 'API offline — open a terminal in UI-main and run: npm run dev:all'
+        ? `API offline — run npm run dev:all (API should listen on port ${apiPort})`
         : error.response?.data?.error ||
           error.response?.data?.message ||
-          'Server unreachable — ensure the API is running on port 3001',
+          `Server unreachable — ensure the API is running (port ${apiPort})`,
       status: error.response?.status,
       code: error.response?.data?.code,
       capability: error.response?.data?.capability,
@@ -117,6 +119,7 @@ export const api = {
   billing: {
     createCheckout: (payload) => request('POST', '/billing/checkout-session', payload),
     startDevTrial: (payload) => request('POST', '/billing/dev-trial', payload),
+    simulateTier: (payload) => request('POST', '/billing/simulate-tier', payload),
     verifySession: (sessionId) =>
       request('GET', '/billing/session', null, { session_id: sessionId }),
     portal: () => request('POST', '/billing/portal'),
@@ -159,6 +162,25 @@ export const api = {
 
   brief: {
     getDaily: () => safeRequest('GET', '/brief/daily'),
+  },
+
+  desk: {
+    getIntelligence: (symbol) =>
+      request('GET', '/desk/intelligence', null, { symbol: symbol || 'XAUUSD' }),
+    getCapitalFlows: () => request('GET', '/desk/capital-flows'),
+    getRateSeries: (country) =>
+      request('GET', `/desk/rates/${encodeURIComponent(country || 'US')}/series`),
+    getRateDecisions: (country) =>
+      request('GET', '/desk/rates/decisions', null, country ? { country } : {}),
+    getCalendarForSymbol: (symbol) =>
+      request('GET', `/desk/calendar/${encodeURIComponent(symbol || 'XAUUSD')}`),
+    analyzeCalendarEvent: (event, symbol) =>
+      request('POST', '/desk/calendar-event-analysis', { event, symbol }),
+    getAiStatus: () => request('GET', '/desk/ai-status'),
+    getGeneralMarketsNarrative: (payload) =>
+      request('POST', '/desk/general-markets-narrative', payload),
+    getEconomy: (country) => request('GET', `/desk/economy/${country}`),
+    candleAnalysis: (payload) => request('POST', '/desk/candle-analysis', payload),
   },
 
   trader: {
@@ -391,6 +413,8 @@ export const api = {
 
   chat: {
     send: (message) => request('POST', '/chat', { message }),
+    newsInsight: (payload) => request('POST', '/chat/news-insight', payload),
+    newsInsightChat: (payload) => request('POST', '/chat/news-insight/chat', payload),
   },
 };
 

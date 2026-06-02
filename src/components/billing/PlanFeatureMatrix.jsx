@@ -2,10 +2,14 @@ import React from 'react';
 import { Check, Minus } from 'lucide-react';
 
 const ROWS = [
-  { feature: 'Overview & live prices', free: true, pro: true, elite: true },
+  { feature: 'MRKT terminal (chart + headline)', free: true, pro: true, elite: true },
+  { feature: 'News feed (read)', free: true, pro: true, elite: true },
+  { feature: 'Chart labels & callouts', free: false, pro: true, elite: true },
+  { feature: 'Target & pullback levels', free: false, pro: true, elite: true },
+  { feature: 'Calendar events on chart', free: false, pro: true, elite: true },
+  { feature: 'News AI insights (brain)', free: false, pro: true, elite: true },
   { feature: 'Browse saved ideas', free: true, pro: true, elite: true },
   { feature: 'Manual journal entries', free: true, pro: true, elite: true },
-  { feature: 'Calendar & news', free: true, pro: true, elite: true },
   { feature: 'AI idea generation', free: false, pro: true, elite: true },
   { feature: 'Strategy backtest lab', free: false, pro: true, elite: true },
   { feature: 'Accept & track positions', free: 'Limited', pro: true, elite: true },

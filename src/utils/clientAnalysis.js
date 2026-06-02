@@ -27,8 +27,8 @@ function trendOfSeries(bars) {
   const earlyAvg = early.reduce((a, b) => a + b, 0) / early.length;
   const last = closes[closes.length - 1];
   const delta = earlyAvg ? (last - earlyAvg) / earlyAvg : 0;
-  if (delta > 0.0025) return 'BULLISH';
-  if (delta < -0.0025) return 'BEARISH';
+  if (delta > 0.0012) return 'BULLISH';
+  if (delta < -0.0012) return 'BEARISH';
   return 'NEUTRAL';
 }
 

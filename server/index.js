@@ -26,6 +26,7 @@ import alertsRoutes from "./routes/alerts.js";
 import economyRoutes from "./routes/economy.js";
 import briefRoutes from "./routes/brief.js";
 import traderRoutes from "./routes/trader.js";
+import deskRoutes from "./routes/desk.js";
 import { initRealtime } from "./realtime/hub.js";
 import { attachCorrelationId, requestLogger } from "./middleware/observability.js";
 import { ensureMacroDataReady } from "./services/macroBootstrap.js";
@@ -73,6 +74,7 @@ app.use("/api/v1/alerts", alertsRoutes);
 app.use("/api/v1/economy", economyRoutes);
 app.use("/api/v1/brief", briefRoutes);
 app.use("/api/v1/trader", traderRoutes);
+app.use("/api/v1/desk", deskRoutes);
 
 app.get("/", (_req, res) => {
   res.json({ ok: true, message: "INSIDR API running", docs: "/api/v1/health" });

@@ -11,7 +11,7 @@ import { friendlyApiError } from '../utils/friendlyApiError.js';
 
 export { friendlyApiError };
 
-const REFRESH_MS = 45_000;
+const REFRESH_MS = 20_000;
 
 const DEFAULT_PROFILE = {
   typical_behaviour:

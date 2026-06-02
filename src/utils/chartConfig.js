@@ -1,4 +1,4 @@
-export const CHART_INTERVALS = ["1m", "5m", "15m", "1h", "4h", "1day", "1week"];
+export const CHART_INTERVALS = ["1m", "5m", "15m", "30m", "1h", "4h", "1day", "1week"];
 export const CHART_PERIODS = ["1D", "1W", "1M", "3M", "1Y"];
 
 export const DEFAULT_CHART = { interval: "4h", period: "1M" };
@@ -8,6 +8,7 @@ export function formatIntervalLabel(interval) {
     '1m': '1m',
     '5m': '5m',
     '15m': '15m',
+    '30m': '30m',
     '1h': '1H',
     '4h': '4H',
     '1day': '1D',

@@ -1,10 +1,6 @@
-export const CAPABILITIES = {
-  'ideas.generate': ['pro', 'elite'],
-  'backtest.run': ['pro', 'elite'],
-  'chat.advanced': ['elite'],
-  'alerts.manage': ['pro', 'elite'],
-  'broker.sync': ['pro', 'elite'],
-};
+import { CAPABILITIES } from '../config/features.js';
+
+export { CAPABILITIES };
 
 export function hasPaidAccess(user) {
   if (!user) return false;
@@ -26,7 +22,9 @@ export function hasCapability(user, capability) {
   const tiers = CAPABILITIES[capability];
   if (!tiers) return false;
   const tier = user?.tier || 'free';
-  return tiers.includes(tier) && hasPaidAccess(user);
+  if (!tiers.includes(tier)) return false;
+  if (tiers.includes('free')) return true;
+  return hasPaidAccess(user);
 }
 
 export function listCapabilities(user) {

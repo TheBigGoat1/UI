@@ -11,6 +11,8 @@ import {
   stripe,
 } from "../services/stripe.js";
 import { tierFromPlanId } from "../config/plans.js";
+import { getBillingModeConfig } from "../config/billingMode.js";
+import { FEATURE_CATALOG, MRKT_FEATURE_KEYS } from "../config/features.js";
 import {
   accessSnapshot,
   applySubscriptionFields,
@@ -71,6 +73,46 @@ router.post("/checkout-session", requireAuth, async (req, res) => {
       success: false,
       error: formatStripeError(err),
     });
+  }
+});
+
+/** Instant tier preview — Stripe test mode only; production lock rules still apply */
+router.post("/simulate-tier", requireAuth, async (req, res) => {
+  const mode = getBillingModeConfig();
+  if (!mode.tier_simulator_enabled) {
+    return res.status(403).json({
+      success: false,
+      error: "Tier simulator requires Stripe test mode (sk_test_) or ALLOW_DEV_BILLING.",
+    });
+  }
+
+  try {
+    const tier = String(req.body?.tier || "free").toLowerCase();
+    if (!["free", "pro", "elite"].includes(tier)) {
+      return res.status(400).json({ success: false, error: "tier must be free, pro, or elite." });
+    }
+
+    let user;
+    if (tier === "free") {
+      user = await revokePaidAccess(req.user.id, "simulated_free");
+    } else {
+      user = await startLocalDevTrial(req.user.id, tier, req.body?.billingCycle || "monthly");
+    }
+
+    user = await syncUserSubscription(user);
+
+    res.json({
+      success: true,
+      data: {
+        user: toPublicUser(user),
+        access: accessSnapshot(user),
+        capabilities: userCapabilities(user).available,
+        simulated_tier: tier,
+        note: "Test preview — use Stripe Checkout for full webhook flow.",
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 
@@ -191,15 +233,13 @@ router.post("/portal", requireAuth, async (req, res) => {
 });
 
 router.get("/health", (_req, res) => {
+  const mode = getBillingModeConfig();
   res.json({
     success: true,
     data: {
-      stripe_configured: Boolean(stripe),
-      webhook_configured: Boolean(process.env.STRIPE_WEBHOOK_SECRET),
-      dev_trial_enabled:
-        process.env.NODE_ENV !== "production" || process.env.ALLOW_DEV_BILLING === "true",
-      free_backtest_open:
-        process.env.NODE_ENV !== "production" || process.env.ALLOW_FREE_BACKTEST === "true",
+      ...mode,
+      feature_catalog: Object.keys(FEATURE_CATALOG),
+      mrkt_features: MRKT_FEATURE_KEYS,
     },
   });
 });
@@ -209,6 +249,8 @@ router.get("/status", requireAuth, async (req, res) => {
   user = await syncUserSubscription(user);
   const access = accessSnapshot(user);
   const caps = userCapabilities(user);
+
+  const mode = getBillingModeConfig();
 
   res.json({
     success: true,
@@ -223,6 +265,7 @@ router.get("/status", requireAuth, async (req, res) => {
       payment_required: access.payment_required,
       message: access.message,
       capabilities: caps.available,
+      billing_mode: mode,
     },
   });
 });
