@@ -6,20 +6,13 @@ import MrktInfinityLoader from './MrktInfinityLoader.jsx';
 import InsidrNewsAnalysis from './InsidrNewsAnalysis.jsx';
 import { formatNewsTime } from '../../utils/newsAssets.js';
 import { impactLabel, COUNTRY_FLAGS } from '../../utils/deskBiasContent.js';
+import {
+  cacheKeyForCandle,
+  getCachedCandleAnalysis,
+  setCachedCandleAnalysis,
+} from '../../utils/chartSessionCache.js';
 
-function formatPanelTimestamp(publishedAt) {
-  if (!publishedAt) return new Date().toLocaleString();
-  const d = new Date(publishedAt);
-  if (Number.isNaN(d.getTime())) return '—';
-  return d.toLocaleString(undefined, {
-    month: 'numeric',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-}
+import { formatMacroValue, formatPanelTimestamp, LABEL } from '../../utils/displayFormat.js';
 
 function impactBadgeClass(impact) {
   const imp = impactLabel(impact);
@@ -57,6 +50,17 @@ const MrktCandleAnalysisPanel = ({
 
   useEffect(() => {
     let active = true;
+    const cacheKey = cacheKeyForCandle(symbol, publishedAt, title);
+    const cached = getCachedCandleAnalysis(cacheKey);
+    if (cached) {
+      setData(cached);
+      setLoading(false);
+      setError('');
+      return () => {
+        active = false;
+      };
+    }
+
     setLoading(true);
     setError('');
     setData(null);
@@ -85,6 +89,7 @@ const MrktCandleAnalysisPanel = ({
           setError(res?.error || 'Candle analysis unavailable.');
           return;
         }
+        setCachedCandleAnalysis(cacheKey, res.data);
         setData(res.data);
       })
       .catch((e) => {
@@ -163,9 +168,25 @@ const MrktCandleAnalysisPanel = ({
             </ul>
           </section>
 
+          {(data?.whatLedToThis?.summary || (data?.whatLedToThis?.bullets || []).length > 0) && (
+            <section className="mrkt-candle-section mrkt-candle-section--led">
+              <h3 className="mrkt-candle-section__title">What may have led to this</h3>
+              {data?.whatLedToThis?.summary && (
+                <p className="mrkt-candle-section__summary">{data.whatLedToThis.summary}</p>
+              )}
+              <ul className="mrkt-candle-bullets">
+                {(data?.whatLedToThis?.bullets || []).map((b, i) => (
+                  <li key={`led-${i}`}>{b}</li>
+                ))}
+              </ul>
+            </section>
+          )}
+
           <section className="mrkt-candle-section">
             <h3 className="mrkt-candle-section__title">Technicals</h3>
-            <p className="mrkt-candle-section__body">{data?.technicals || '—'}</p>
+            <p className="mrkt-candle-section__body">
+              {data?.technicals || 'Structure read building from live chart context.'}
+            </p>
           </section>
 
           <div className="mrkt-candle-chart-wrap">
@@ -275,9 +296,9 @@ const MrktCandleAnalysisPanel = ({
                     <div className="mrkt-candle-event-row__body">
                       <p className="mrkt-candle-event-row__name">{name}</p>
                       <p className="mrkt-candle-event-row__vals">
-                        Actual: <strong>{ev.actual ?? '—'}</strong>
+                        Actual: <strong>{formatMacroValue(ev.actual, 'actual')}</strong>
                         {' | '}
-                        Forecast: <strong>{ev.forecast ?? '—'}</strong>
+                        Forecast: <strong>{formatMacroValue(ev.forecast, 'forecast')}</strong>
                       </p>
                       {showInsight && <p className="mrkt-candle-event-row__insight">{eventInsight.text}</p>}
                     </div>

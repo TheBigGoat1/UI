@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { formatMacroValue, formatImpact } from '../../utils/displayFormat.js';
 import { Link } from 'react-router-dom';
 import {
   ChevronDown,
@@ -71,9 +72,8 @@ function toDayKey(iso) {
   return String(iso).slice(0, 10);
 }
 
-function cellValue(val) {
-  if (val == null || val === '') return '—';
-  return String(val);
+function cellValue(val, kind = 'actual') {
+  return formatMacroValue(val, kind);
 }
 
 function impactClass(imp) {
@@ -299,9 +299,9 @@ const DeskHomeCalendar = ({ symbol = 'XAUUSD', prices = {}, onSelectAsset, onEve
                               {String(event.importance || event.impact || '—').toUpperCase()}
                             </span>
                           </td>
-                          <td className="desk-home-cal__num">{cellValue(event.actual)}</td>
-                          <td className="desk-home-cal__num">{cellValue(event.forecast)}</td>
-                          <td className="desk-home-cal__num">{cellValue(event.previous)}</td>
+                          <td className="desk-home-cal__num">{cellValue(event.actual, 'actual')}</td>
+                          <td className="desk-home-cal__num">{cellValue(event.forecast, 'forecast')}</td>
+                          <td className="desk-home-cal__num">{cellValue(event.previous, 'previous')}</td>
                           <td className="desk-home-cal__chev">
                             {open ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
                           </td>

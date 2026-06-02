@@ -53,7 +53,7 @@ const SetupChecklist = ({ showWelcome = false }) => {
       done: steps.watchlist,
       label: 'Add symbols to your watchlist',
       hint: 'Drives default charts, news, and scan alerts.',
-      to: '/dashboard/settings?tab=watchlist',
+      to: '/dashboard/settings?tab=trading',
     },
     {
       key: 'idea',

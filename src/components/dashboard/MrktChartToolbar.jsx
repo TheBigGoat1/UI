@@ -1,11 +1,10 @@
 import React from 'react';
+import MrktAssetDropdown from './MrktAssetDropdown.jsx';
 import {
-  Plus,
   Tag,
   Calendar,
   Target,
   Newspaper,
-  ChevronDown,
   Lock,
   Maximize2,
   Minimize2,
@@ -36,8 +35,9 @@ const MrktChartToolbar = ({
   symbol,
   interval,
   onTimeframeChange,
-  onAssetPicker,
-  onAddSymbol,
+  assets = [],
+  prices = {},
+  onSymbolChange,
   toggles,
   onToggle,
   newsOpen,
@@ -62,18 +62,12 @@ const MrktChartToolbar = ({
   return (
     <div className="mrkt-chart-toolbar">
       <div className="mrkt-chart-toolbar__left">
-        <button type="button" className="mrkt-chart-toolbar__asset-select" onClick={onAssetPicker}>
-          {symbol}
-          <ChevronDown size={14} className="opacity-60" />
-        </button>
-        <button
-          type="button"
-          className="mrkt-chart-toolbar__asset-btn"
-          onClick={onAddSymbol}
-          aria-label="Add symbol"
-        >
-          <Plus size={14} />
-        </button>
+        <MrktAssetDropdown
+          symbol={symbol}
+          assets={assets}
+          prices={prices}
+          onSelect={onSymbolChange}
+        />
 
         <div className="mrkt-chart-toolbar__tf-group">
           {TIMEFRAMES.map((tf) => (
@@ -95,7 +89,6 @@ const MrktChartToolbar = ({
           locked={!access?.canLabels}
           onClick={() => tryToggle('labels', access?.canLabels)}
         >
-          <Plus size={11} className="mrkt-toggle-btn__plus" />
           <Tag size={12} /> Labels
         </ToggleBtn>
         <ToggleBtn

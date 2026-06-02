@@ -7,19 +7,23 @@ import MrktTerminalHeader from '../components/dashboard/MrktTerminalHeader';
 import MrktChartToolbar from '../components/dashboard/MrktChartToolbar';
 import MrktNewsFeed from '../components/dashboard/MrktNewsFeed';
 import MrktChartOverlays from '../components/dashboard/MrktChartOverlays';
-import MrktAssetPicker from '../components/dashboard/MrktAssetPicker';
 import InsidrDeskBiasPanel from '../components/dashboard/InsidrDeskBiasPanel.jsx';
 import MrktChartEventBadge from '../components/dashboard/MrktChartEventBadge.jsx';
 import MrktCandleAnalysisPanel from '../components/dashboard/MrktCandleAnalysisPanel.jsx';
 import MrktChartLiveRibbon from '../components/dashboard/MrktChartLiveRibbon.jsx';
+import MrktTerminalStatusBar from '../components/dashboard/MrktTerminalStatusBar.jsx';
+import SectionErrorBoundary from '../components/SectionErrorBoundary.jsx';
+import { formatPrice } from '../utils/displayFormat.js';
 import { applyLiveSessionBias } from '../utils/liveSessionBias.js';
 import { primaryAssetForNews } from '../utils/newsAssets.js';
+import { mapNewsToChartAnnotations } from '../utils/chartCandleIntel.js';
+import { useChartHistory } from '../hooks/useChartHistory.js';
+import { useTerminalRealtime } from '../hooks/useTerminalRealtime.js';
 import { useAssetAnalysis } from '../hooks/useAssetAnalysis.js';
 import { useFeatureAccess } from '../hooks/useFeatureAccess.js';
 import { useLayout } from '../context/LayoutContext.jsx';
 import { resolveMarketQuote } from '../utils/marketQuote.js';
 import { subscribeSocket } from '../services/realtime/socket.js';
-import { applyDeskPriceAliases } from '../utils/deskSymbols.js';
 
 const FEATURE_TOGGLE_MAP = {
   labels: 'chart.labels',
@@ -35,18 +39,15 @@ const Dashboard = () => {
   const showWelcome = searchParams.get('welcome') === '1';
   const checkoutSuccess = searchParams.get('checkout') === 'success';
 
-  const [assetsList, setAssetsList] = useState([]);
-  const [prices, setPrices] = useState({});
   const [selectedAsset, setSelectedAsset] = useState('XAUUSD');
   const [chartConfig, setChartConfig] = useState({ interval: '1h', period: '1W' });
   const [brief, setBrief] = useState(null);
-  const [headlineNews, setHeadlineNews] = useState([]);
-  const [fetchError, setFetchError] = useState(null);
-  const [pickerOpen, setPickerOpen] = useState(false);
   const [selectedNews, setSelectedNews] = useState(null);
   const [deskTab, setDeskTab] = useState('bias');
   const [deskData, setDeskData] = useState(null);
   const [deskLoading, setDeskLoading] = useState(false);
+  const [lastDeskSync, setLastDeskSync] = useState(null);
+  const [syncAllLoading, setSyncAllLoading] = useState(false);
   const [candlePanelHeadline, setCandlePanelHeadline] = useState(null);
   const [chartCalendarEvents, setChartCalendarEvents] = useState([]);
   const [toggles, setToggles] = useState({
@@ -88,45 +89,26 @@ const Dashboard = () => {
     };
   }, [selectedAsset, toggles.calendar]);
 
+  const {
+    assetsList,
+    prices,
+    headlineNews,
+    fetchError,
+    newsError,
+    newsLoading,
+    socketLive,
+    lastPriceSync,
+    lastNewsSync,
+    priceSource,
+    reloadMarket,
+    reloadNews,
+  } = useTerminalRealtime(selectedAsset);
+
+  const showStatusBar = true;
+  const statusCompact = !fetchError && !newsError && socketLive;
+
   const dismissWelcome = () => setSearchParams({}, { replace: true });
-
-  const loadMarketData = async () => {
-    setFetchError(null);
-    try {
-      const [listRes, pricesRes] = await Promise.all([
-        api.market.getAssetsList(),
-        api.market.getAllPrices(),
-      ]);
-      if (listRes?.success && Array.isArray(listRes.data) && listRes.data.length) {
-        setAssetsList(listRes.data);
-      }
-      if (pricesRes?.success && pricesRes.data) setPrices(applyDeskPriceAliases(pricesRes.data));
-      if (!pricesRes?.success || !Object.keys(pricesRes?.data || {}).length) {
-        setFetchError('Market prices unavailable. Run: npm run dev:all');
-      }
-    } catch {
-      setFetchError('Cannot reach API. Run: npm run dev:all');
-    }
-  };
-
-  useEffect(() => {
-    loadMarketData();
-    const interval = setInterval(async () => {
-      try {
-        const res = await api.market.getAllPrices();
-        if (res?.success) setPrices(applyDeskPriceAliases(res.data));
-      } catch {
-        /* keep last snapshot */
-      }
-    }, 2500);
-    const offPrices = subscribeSocket('market:prices', (payload) => {
-      if (payload?.prices) setPrices(applyDeskPriceAliases(payload.prices));
-    });
-    return () => {
-      clearInterval(interval);
-      offPrices();
-    };
-  }, []);
+  const loadMarketData = reloadMarket;
 
   useEffect(() => {
     let active = true;
@@ -156,23 +138,17 @@ const Dashboard = () => {
     };
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    api.news
-      .getByAssetPath(selectedAsset, { page: 1, limit: 8 })
-      .then((res) => {
-        if (active && res?.data?.length) setHeadlineNews(res.data);
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, [selectedAsset]);
-
   const selectedPrice =
     prices[selectedAsset] ||
     prices[`C:${selectedAsset}`] ||
     prices[selectedAsset?.replace('/', '')];
+
+  const { bars: chartBars, isLiveTape, meta: chartHistoryMeta } = useChartHistory(
+    selectedAsset,
+    chartConfig.interval,
+    chartConfig.period,
+    selectedPrice?.price,
+  );
 
   const analysisState = useAssetAnalysis(
     selectedAsset,
@@ -185,7 +161,7 @@ const Dashboard = () => {
     priceData: selectedPrice,
     dataQuality: analysisState.meta?.dataQuality,
     levelsLast: analysisState.technical?.modules?.levels?.last,
-    historyBars: [],
+    historyBars: chartBars,
   });
 
   const ms = analysisState.technical?.modules?.marketStructure;
@@ -205,6 +181,7 @@ const Dashboard = () => {
 
   const changePercent = displayQuote.changePercent ?? selectedPrice?.changePercent ?? 0;
   const price = displayQuote.price ?? selectedPrice?.price;
+
   const changeAbs =
     price != null && changePercent != null
       ? (Number(price) * Number(changePercent)) / 100
@@ -219,9 +196,11 @@ const Dashboard = () => {
       changePercent,
       ltfTrend: dayTrend,
       htfTrend: swingTrend,
+      chartInterval: chartConfig.interval,
+      chartPeriod: chartConfig.period,
     });
     return { ...analysisState, technical };
-  }, [analysisState, changePercent, dayTrend, swingTrend]);
+  }, [analysisState, changePercent, dayTrend, swingTrend, chartConfig.interval, chartConfig.period]);
 
   const marketContext = useMemo(
     () => ({
@@ -236,6 +215,8 @@ const Dashboard = () => {
       change_pct: changePercent,
       technical_summary: displayAnalysisState.technical?.summary,
       interval: chartConfig.interval,
+      period: chartConfig.period,
+      timeframe_context: displayAnalysisState.technical?.timeframeContext,
     }),
     [
       selectedAsset,
@@ -251,6 +232,14 @@ const Dashboard = () => {
   );
 
   const chartAnnotations = useMemo(() => {
+    const timeMapped = mapNewsToChartAnnotations(
+      headlineNews,
+      chartBars,
+      chartConfig.interval,
+      selectedAsset,
+    );
+    if (timeMapped.length) return timeMapped;
+
     const pool = [];
     if (selectedNews?.title) pool.push(selectedNews);
     headlineNews.forEach((n) => {
@@ -280,7 +269,7 @@ const Dashboard = () => {
         item,
       };
     });
-  }, [headlineNews, selectedNews]);
+  }, [headlineNews, selectedNews, chartBars, chartConfig.interval, selectedAsset]);
 
   const chartLevels = useMemo(() => {
     if (!toggles.targets || support == null || resistance == null) return [];
@@ -325,7 +314,7 @@ const Dashboard = () => {
           extra.description ||
           headlineNews[0]?.description ||
           displayAnalysisState.technical?.summary ||
-          `Chart tap analysis for ${selectedAsset} at ${price != null ? Number(price).toFixed(2) : '—'}.`,
+          `Chart tap analysis for ${selectedAsset} at ${formatPrice(price, selectedAsset)}.`,
         publishedAt: extra.publishedAt || headlineNews[0]?.publishedAt || new Date().toISOString(),
         source: extra.source || 'chart_session',
         ...extra,
@@ -369,7 +358,10 @@ const Dashboard = () => {
         api.desk.getIntelligence(selectedAsset),
         api.brief.getDaily().catch(() => null),
       ]);
-      if (deskRes?.success) setDeskData(deskRes.data);
+      if (deskRes?.success) {
+        setDeskData(deskRes.data);
+        setLastDeskSync(Date.now());
+      }
       if (briefRes?.success) setBrief(briefRes.data);
     } catch {
       /* keep last snapshot */
@@ -377,6 +369,20 @@ const Dashboard = () => {
       setDeskLoading(false);
     }
   }, [selectedAsset]);
+
+  const handleSyncAll = useCallback(async () => {
+    setSyncAllLoading(true);
+    try {
+      await Promise.all([
+        reloadMarket(),
+        reloadNews(),
+        loadDeskIntelligence(),
+        analysisState.refresh?.(),
+      ]);
+    } finally {
+      setSyncAllLoading(false);
+    }
+  }, [reloadMarket, reloadNews, loadDeskIntelligence, analysisState]);
 
   const lastTapeRefresh = useRef(0);
   useEffect(() => {
@@ -391,7 +397,10 @@ const Dashboard = () => {
     loadDeskIntelligence();
     const id = setInterval(loadDeskIntelligence, 30000);
     const offDesk = subscribeSocket('desk:snapshot', (payload) => {
-      if (payload?.data) setDeskData(payload.data);
+      if (payload?.data) {
+        setDeskData(payload.data);
+        setLastDeskSync(Date.now());
+      }
     });
     return () => {
       clearInterval(id);
@@ -400,12 +409,15 @@ const Dashboard = () => {
   }, [loadDeskIntelligence]);
 
   const chartIsModel = !selectedPrice?.price && displayQuote.isModel;
-  const chartIsLive = Boolean(selectedPrice?.price) && !selectedPrice?.synthetic;
+  const chartIsLive = Boolean(selectedPrice?.price) && !selectedPrice?.synthetic && isLiveTape;
 
   const handleCalendarEventInsight = useCallback(() => {
     setDeskTab('calendar');
     requestAnimationFrame(() => {
-      document.querySelector('.desk-home-cal')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      document.querySelector('.mrkt-desk-panel-wrap')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      setTimeout(() => {
+        document.querySelector('.desk-home-cal')?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }, 280);
     });
   }, []);
 
@@ -451,7 +463,7 @@ const Dashboard = () => {
         </div>
       )}
 
-      {!headerCompact && (
+        {!headerCompact && (
         <MrktTerminalHeader
           headline={headline}
           price={price}
@@ -459,13 +471,36 @@ const Dashboard = () => {
           changePercent={changePercent}
           swingTrend={swingTrend}
           dayTrend={dayTrend}
+          symbol={selectedAsset}
+          chartInterval={chartConfig.interval}
+          chartPeriod={chartConfig.period}
+          timeframe={analysisState.timeframe}
+          isLive={chartIsLive}
         />
+      )}
+
+      {showStatusBar && (
+      <MrktTerminalStatusBar
+        compact={statusCompact}
+        socketLive={socketLive}
+        lastPriceSync={lastPriceSync}
+        lastNewsSync={lastNewsSync}
+        lastChartSync={chartHistoryMeta.asOf}
+        lastDeskSync={lastDeskSync}
+        priceSource={priceSource}
+        chartLive={chartIsLive}
+        newsError={newsError}
+        onRefresh={handleSyncAll}
+        refreshing={syncAllLoading || deskLoading}
+      />
       )}
 
       {headerCompact && (
         <div className="mrkt-terminal__header-compact">
           <p className="mrkt-terminal__header-compact-headline">{headline}</p>
-          <span className="mrkt-terminal__header-compact-price">{price != null ? Number(price).toFixed(2) : '—'}</span>
+          <span className="mrkt-terminal__header-compact-price">
+            {formatPrice(price, selectedAsset)}
+          </span>
           <button type="button" className="mrkt-desk-controls__btn" onClick={toggleHeaderCompact}>
             Show full header
           </button>
@@ -479,8 +514,9 @@ const Dashboard = () => {
               symbol={selectedAsset}
               interval={chartConfig.interval}
               onTimeframeChange={(interval, period) => setChartConfig({ interval, period })}
-              onAssetPicker={() => setPickerOpen(true)}
-              onAddSymbol={() => setPickerOpen(true)}
+              assets={assetsList}
+              prices={prices}
+              onSymbolChange={setSelectedAsset}
               toggles={toggles}
               onToggle={(key) => setToggles((p) => ({ ...p, [key]: !p[key] }))}
               newsOpen={newsOpen}
@@ -508,12 +544,10 @@ const Dashboard = () => {
                   {selectedAsset ? (
                     <>
                       <MrktChartLiveRibbon
-                        symbol={selectedAsset}
-                        price={price}
-                        changePercent={changePercent}
                         bias={displayAnalysisState.technical?.bias}
                         isLive={chartIsLive}
                         interval={chartConfig.interval}
+                        period={chartConfig.period}
                       />
                       <TradeChart
                         key={`${selectedAsset}-${chartConfig.interval}`}
@@ -535,11 +569,23 @@ const Dashboard = () => {
                         symbol={selectedAsset}
                         annotations={chartAnnotations}
                         calendarEvents={chartCalendarEvents}
+                        chartBars={chartBars}
+                        chartInterval={chartConfig.interval}
+                        newsPool={headlineNews}
+                        isLiveTape={chartIsLive}
                         onMarkerSelect={handleChartMarkerSelect}
                         onCandleOpen={handleCandleAnalysisOpen}
                         onChartTap={handleChartTap}
                         candleAnalysisOpen={Boolean(candlePanelHeadline)}
                       />
+                      {chartHistoryMeta.synthetic && chartBars.length >= 2 && (
+                        <div className="mrkt-chart-data-badge mrkt-chart-data-badge--history" role="status">
+                          History: {chartHistoryMeta.source} — last sync{' '}
+                          {chartHistoryMeta.asOf
+                            ? new Date(chartHistoryMeta.asOf).toLocaleTimeString()
+                            : '—'}
+                        </div>
+                      )}
                       {chartIsModel && (
                         <div className="mrkt-chart-data-badge" role="status">
                           Awaiting live quote — showing model structure until tape connects
@@ -575,12 +621,18 @@ const Dashboard = () => {
           </div>
 
           <div className="mrkt-desk-panel-wrap">
+            <SectionErrorBoundary
+              title="Desk panel error"
+              message="Desk intelligence failed to load. Sync all or switch tabs to retry."
+            >
             <InsidrDeskBiasPanel
               symbol={selectedAsset}
               selectedNews={selectedNews}
               analysisState={displayAnalysisState}
               prices={prices}
               brief={brief}
+              newsPool={headlineNews}
+              changePercent={changePercent}
               activeTab={deskTab}
               onTabChange={setDeskTab}
               deskData={deskData}
@@ -588,13 +640,24 @@ const Dashboard = () => {
               onDeskRefresh={loadDeskIntelligence}
               onCalendarEventInsight={handleCalendarEventInsight}
               onSelectAsset={handleSelectAsset}
+              onNewsSelect={handleNewsSelect}
+              chartInterval={chartConfig.interval}
+              chartPeriod={chartConfig.period}
             />
+            </SectionErrorBoundary>
           </div>
         </div>
 
         {newsOpen && (
+          <SectionErrorBoundary
+            title="News feed error"
+            message="The news column hit an error. Retry sync or open the full news page."
+          >
           <MrktNewsFeed
             asset={selectedAsset}
+            wireItems={headlineNews}
+            wireLoading={newsLoading}
+            onWireSync={reloadNews}
             canAiInsight={access.canNewsAi}
             onUpgrade={handleUpgradePrompt}
             onSelectAsset={handleSelectAsset}
@@ -602,19 +665,12 @@ const Dashboard = () => {
             onNewsSelect={handleNewsSelect}
             marketContext={marketContext}
             prices={prices}
+            newsError={newsError}
+            onNewsRefresh={reloadNews}
           />
+          </SectionErrorBoundary>
         )}
       </div>
-
-      {pickerOpen && (
-        <MrktAssetPicker
-          assets={assetsList}
-          prices={prices}
-          selected={selectedAsset}
-          onSelect={setSelectedAsset}
-          onClose={() => setPickerOpen(false)}
-        />
-      )}
 
     </div>
   );

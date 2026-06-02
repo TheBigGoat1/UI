@@ -5,6 +5,7 @@ import {
   getAssetsList,
   getHistory,
   getSyntheticHistory,
+  getLiveQuote,
 } from "../services/marketData.js";
 
 const router = Router();
@@ -16,10 +17,27 @@ router.get("/assets", (_req, res) => {
 router.get("/prices", async (_req, res) => {
   try {
     const data = await getAllPrices();
-    res.json({ success: true, data });
+    res.json({ success: true, data, ts: Date.now() });
   } catch (error) {
     console.warn("[market] prices fallback:", error.message);
-    res.json({ success: true, data: {}, meta: { degraded: true } });
+    res.json({ success: true, data: {}, meta: { degraded: true }, ts: Date.now() });
+  }
+});
+
+router.get("/quote/:symbol", async (req, res) => {
+  try {
+    const data = await getLiveQuote(req.params.symbol);
+    if (!data?.price) {
+      return res.status(503).json({
+        success: false,
+        error: "Live quote unavailable for symbol",
+        ts: Date.now(),
+      });
+    }
+    res.json({ success: true, data, ts: Date.now() });
+  } catch (error) {
+    console.warn("[market] quote error:", req.params.symbol, error.message);
+    res.status(503).json({ success: false, error: error.message, ts: Date.now() });
   }
 });
 

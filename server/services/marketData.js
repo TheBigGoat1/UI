@@ -178,7 +178,7 @@ export function unwrapHistory(result) {
 }
 
 export async function getAllPrices() {
-  const priceTtl = hasRedisCache() ? 15000 : 8000;
+  const priceTtl = hasRedisCache() ? 4000 : 2000;
   return cached("market:prices", priceTtl, async () => {
     const out = {};
     const cryptoAssets = ASSETS.filter((a) => isBinanceAsset(a));
@@ -274,6 +274,39 @@ export async function getAllPrices() {
   });
 }
 
+/** Fast single-symbol quote — short cache for active chart symbol (sub-second desk). */
+export async function getLiveQuote(symbol) {
+  const meta = getAssetMeta(symbol);
+  if (!meta?.asset) return null;
+  const cacheKey = `quote:live:${meta.asset}`;
+  const quoteTtl = 700;
+
+  return cached(cacheKey, quoteTtl, async () => {
+    try {
+      if (isBinanceAsset(meta)) {
+        const row = await fetchBinancePrice(meta.asset);
+        if (row?.price != null) {
+          return {
+            price: row.price,
+            change: row.change ?? 0,
+            changePercent: row.changePercent ?? 0,
+            updatedAt: new Date().toISOString(),
+            source: 'binance',
+            synthetic: false,
+          };
+        }
+      }
+      const yahoo = await fetchYahooQuoteChange(meta.yahoo);
+      if (yahoo?.price != null) {
+        return { ...yahoo, synthetic: false };
+      }
+    } catch {
+      /* fall through */
+    }
+    return null;
+  });
+}
+
 function barCountForPeriod(period) {
   const map = { "1D": 96, "1W": 168, "1M": 180, "3M": 220, "1Y": 365 };
   return map[period] || 180;
@@ -316,7 +349,14 @@ export async function getHistory(symbol, interval = "1day", period = "1M") {
   const meta = getAssetMeta(symbol) || { asset: symbol, basePrice: 100, yahoo: symbol };
   const range = PERIOD_RANGE[period] || "1mo";
   const cacheKey = `history:${meta.asset}:${interval}:${period}`;
-  const historyTtl = hasRedisCache() ? 120000 : 45000;
+  const shortInterval = ['1m', '5m', '15m', '30m'].includes(String(interval).toLowerCase());
+  const historyTtl = shortInterval
+    ? hasRedisCache()
+      ? 12000
+      : 6000
+    : hasRedisCache()
+      ? 45000
+      : 15000;
   const fallbackBars = () =>
     syntheticHistory(meta, interval, barCountForPeriod(period));
 

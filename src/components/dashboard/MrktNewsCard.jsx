@@ -3,6 +3,7 @@ import { Bookmark, Brain, Camera, Copy, Download } from 'lucide-react';
 import InsidrNewsAnalysis from './InsidrNewsAnalysis.jsx';
 import { isBookmarked, toggleBookmark } from '../../utils/newsBookmarks.js';
 import { copyArticle, downloadArticle } from '../../utils/newsExport.js';
+import { formatNewsHeadline } from '../../utils/displayFormat.js';
 import {
   formatNewsDisplayTime,
   inferWatchAssets,
@@ -125,7 +126,9 @@ const MrktNewsCard = ({
           <span className="mrkt-news__time">{timeLabel}</span>
         </div>
 
-        <h3 className="mrkt-news__headline">{(title || '').toUpperCase()}</h3>
+        <h3 className={`mrkt-news__headline ${highlight ? 'mrkt-news__headline--featured' : ''}`}>
+          {formatNewsHeadline(title)}
+        </h3>
 
         {summary && <p className="mrkt-news__summary">{summary}</p>}
 

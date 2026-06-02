@@ -106,6 +106,37 @@ export async function analyzeCandleMoment({
     8,
   );
 
+  const anchorMs = publishedAt ? new Date(publishedAt).getTime() : Date.now();
+  const leadingHeadlines = (relatedNewsPool || [])
+    .filter((n) => n.title && n.title !== title)
+    .map((n) => ({
+      item: n,
+      t: new Date(n.publishedAt || n.time || 0).getTime(),
+    }))
+    .filter((x) => Number.isFinite(x.t) && x.t < anchorMs)
+    .sort((a, b) => b.t - a.t)
+    .slice(0, 5);
+
+  const whatLedBullets = leadingHeadlines.map((x) => {
+    const row = formatNewsRow(x.item);
+    const when = row.publishedAt
+      ? new Date(row.publishedAt).toLocaleString(undefined, {
+          month: 'short',
+          day: 'numeric',
+          hour: 'numeric',
+          minute: '2-digit',
+        })
+      : 'prior session';
+    return `${when} — ${row.title}`;
+  });
+
+  const whatLedToThis = {
+    summary: leadingHeadlines.length
+      ? `Prior wire flow (${leadingHeadlines.length} headline${leadingHeadlines.length === 1 ? '' : 's'}) in the hours before this candle.`
+      : 'No earlier headlines in the current feed before this timestamp.',
+    bullets: whatLedBullets,
+  };
+
   const bars = historyRes?.bars || [];
   const chartBars = bars.slice(-120);
 
@@ -126,6 +157,7 @@ export async function analyzeCandleMoment({
           ? factualBullets
           : ["No calendar events matched this window — sync macro data for richer context."],
       },
+      whatLedToThis,
       technicals:
         marketContext?.technical_summary ||
         `Session structure on ${symbol}: bias ${marketContext?.bias || "neutral"}.`,
@@ -144,9 +176,13 @@ Return ONLY valid JSON:
     "summary": "One sentence headline takeaway",
     "bullets": ["3-5 short bullets on drivers — concrete, no disclaimers"]
   },
+  "whatLedToThis": {
+    "summary": "One sentence on prior catalysts that set up this move",
+    "bullets": ["2-4 bullets from RELATED HEADLINES and calendar before the anchor time — factual only"]
+  },
   "technicals": "One paragraph on how price reacted and what structure/levels matter on the desk symbol"
 }
-Ground in the headline, summary, live quotes, calendar events, and technical context.`;
+Ground in the headline, summary, live quotes, calendar events, and technical context. Never invent headlines or prices.`;
 
   const user = `Symbol: ${symbol}
 Headline time: ${publishedAt || "recent session"}
@@ -178,6 +214,7 @@ ${JSON.stringify(relatedNews.map((n) => n.title), null, 2)}`;
             ? parsed.whatHappened.bullets
             : factualBullets,
         },
+        whatLedToThis: parsed.whatLedToThis || whatLedToThis,
         technicals: parsed.technicals || parsed.technical || "",
         relatedNews,
         relatedEvents: events,
@@ -191,6 +228,7 @@ ${JSON.stringify(relatedNews.map((n) => n.title), null, 2)}`;
       symbol,
       publishedAt,
       whatHappened: { summary: prose.slice(0, 200), bullets: factualBullets },
+      whatLedToThis,
       technicals: prose,
       relatedNews,
       relatedEvents: events,
@@ -203,6 +241,7 @@ ${JSON.stringify(relatedNews.map((n) => n.title), null, 2)}`;
       symbol,
       publishedAt,
       whatHappened: { summary: summary || title, bullets: factualBullets },
+      whatLedToThis,
       technicals: `Analysis error: ${err.message}`,
       relatedNews,
       relatedEvents: events,

@@ -63,10 +63,8 @@ const MrktSidebar = ({ user, onLogout }) => {
           <span className={`mrkt-sidebar-tier__pill mrkt-sidebar-tier__pill--${tier}`}>
             {tier}
           </span>
-          <span className="nav-item__label mrkt-sidebar-tier__hint">
-            <Link to="/dashboard/pricing" className="hover:text-[#8b5cf6] transition-colors">
-              Plans
-            </Link>
+          <span className="nav-item__label mrkt-sidebar-tier__hint text-text-muted text-[10px]">
+            Plan tier
           </span>
         </div>
 

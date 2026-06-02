@@ -31,6 +31,9 @@ export function resolveMarketQuote({
     if (Number.isFinite(lastBar) && Number.isFinite(prevBar) && prevBar !== 0) {
       changePercent = ((lastBar - prevBar) / prevBar) * 100;
     }
+  } else if (Number.isFinite(Number(priceData?.price))) {
+    price = Number(priceData.price);
+    changePercent = Number(priceData.changePercent ?? changePercent);
   }
 
   return {

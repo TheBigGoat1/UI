@@ -1,7 +1,13 @@
 import React from 'react';
+import {
+  formatPrice,
+  formatChangeAbs,
+  formatChangePercent,
+} from '../../utils/displayFormat.js';
+import { formatTfLabel } from '../../utils/timeframeStack.js';
 
 function trendToSentiment(trend) {
-  if (!trend || trend === '—' || trend === '…') return { label: 'Neutral', tone: 'neutral' };
+  if (!trend) return { label: 'Neutral', tone: 'neutral' };
   const t = String(trend).toUpperCase();
   if (t.includes('STRONG') && t.includes('BULL')) return { label: 'Bullish', tone: 'bull' };
   if (t.includes('BULL')) return { label: 'Slightly Bullish', tone: 'bull' };
@@ -23,7 +29,7 @@ function WavyBullIcon() {
   );
 }
 
-function SentimentPill({ mode, trend }) {
+function SentimentPill({ mode, trend, tfLabel }) {
   const { label, tone } = trendToSentiment(trend);
   return (
     <span
@@ -32,6 +38,7 @@ function SentimentPill({ mode, trend }) {
       }`}
     >
       <span className="mrkt-sentiment-pill__mode">{mode}</span>
+      {tfLabel && <span className="mrkt-sentiment-pill__tf">{tfLabel}</span>}
       <WavyBullIcon />
       <span className="mrkt-sentiment-pill__value">{label}</span>
     </span>
@@ -45,45 +52,47 @@ const MrktTerminalHeader = ({
   changePercent,
   swingTrend,
   dayTrend,
+  symbol = '',
+  chartInterval = '1h',
+  chartPeriod = '1W',
+  timeframe,
+  isLive = true,
 }) => {
   const isUp = Number(changePercent) >= 0;
   const isDown = Number(changePercent) < 0;
-  const fmtPrice = (val) => {
-    if (val == null) return '—';
-    const n = Number(val);
-    if (n > 500) return n.toFixed(2);
-    return n.toFixed(4);
-  };
-
-  const absVal = changeAbs != null ? Math.abs(Number(changeAbs)) : null;
   const pctVal = changePercent != null ? Number(changePercent) : null;
+  const absVal = changeAbs != null ? Math.abs(Number(changeAbs)) : null;
+
   const changeLine =
     absVal != null && pctVal != null
-      ? `${isDown ? '▼ ' : isUp ? '▲ ' : ''}${isDown ? '-' : isUp ? '+' : ''}${absVal.toFixed(2)} ${isDown ? '' : isUp ? '+' : ''}${pctVal.toFixed(2)}%`
+      ? `${isDown ? '▼ ' : isUp ? '▲ ' : ''}${isDown ? '-' : isUp ? '+' : ''}${formatChangeAbs(absVal, symbol)} ${formatChangePercent(pctVal)}`
       : pctVal != null
-        ? `${pctVal.toFixed(2)}%`
-        : '';
+        ? formatChangePercent(pctVal)
+        : formatChangePercent(0);
+
+  const htfLabel = timeframe?.htfLabel || `${formatTfLabel(chartInterval === '1h' ? '4h' : chartInterval)} · ${chartPeriod}`;
+  const ltfLabel = timeframe?.chartLabel || `${formatTfLabel(chartInterval)} · ${chartPeriod}`;
 
   return (
     <header className="mrkt-terminal__header">
       <h1 className="mrkt-terminal__headline">{headline}</h1>
 
       <div className="mrkt-terminal__price-block">
-        <span className="mrkt-terminal__price">{fmtPrice(price)}</span>
-        {changeLine && (
-          <span
-            className={`mrkt-terminal__change ${
-              isUp ? 'mrkt-terminal__change--up' : 'mrkt-terminal__change--down'
-            }`}
-          >
-            {changeLine}
-          </span>
-        )}
+        <span className="mrkt-terminal__price">{formatPrice(price, symbol)}</span>
+        <span
+          className={`mrkt-terminal__change ${
+            isUp ? 'mrkt-terminal__change--up' : 'mrkt-terminal__change--down'
+          }`}
+        >
+          {changeLine}
+        </span>
+        <span className={`mrkt-terminal__live-tag ${isLive ? 'mrkt-terminal__live-tag--on' : ''}`}>
+          {isLive ? 'LIVE' : 'MODEL'}
+        </span>
       </div>
-
       <div className="mrkt-terminal__sentiment-row">
-        <SentimentPill mode="SWING TRADING" trend={swingTrend} />
-        <SentimentPill mode="DAY TRADING" trend={dayTrend} />
+        <SentimentPill mode="SWING TRADING" trend={swingTrend} tfLabel={htfLabel} />
+        <SentimentPill mode="DAY TRADING" trend={dayTrend} tfLabel={ltfLabel} />
       </div>
     </header>
   );

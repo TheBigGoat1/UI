@@ -10,19 +10,18 @@ import {
 import DeskCalendarEventsTab from './DeskCalendarEventsTab.jsx';
 import DeskGeneralMarketsTab from './DeskGeneralMarketsTab.jsx';
 import DeskRatesTab from './DeskRatesTab.jsx';
-import {
-  buildBullishBiasCards,
-  buildBearishBiasCards,
-  formatDeskUpdated,
-  prioritizeBiasCards,
-} from '../../utils/deskBiasContent.js';
+import DeskPanelSkeleton from './DeskPanelSkeleton.jsx';
+import { formatDeskUpdated } from '../../utils/deskBiasContent.js';
+import { buildBiasDeskColumns } from '../../utils/deskBiasIntelligence.js';
 
 const PANEL_TABS = [
   { id: 'bias', label: 'Bias', icon: TrendingUp },
-  { id: 'calendar', label: 'Calendar Events', icon: Calendar },
-  { id: 'markets', label: 'General Markets', icon: Globe },
-  { id: 'rates', label: 'Rates & Central Bank', icon: Landmark },
+  { id: 'calendar', label: 'Calendar', icon: Calendar },
+  { id: 'markets', label: 'Markets', icon: Globe },
+  { id: 'rates', label: 'Rates', icon: Landmark },
 ];
+
+const VISIBLE_DEFAULT = 5;
 
 function biasPhrase(bias) {
   const b = (bias || 'neutral').toLowerCase();
@@ -31,7 +30,37 @@ function biasPhrase(bias) {
   return { text: 'neutral', className: 'insidr-desk-bias__pill--neutral' };
 }
 
-function BiasFactorCard({ card, variant }) {
+function flipWord(dir) {
+  if (dir === 'bullish') return 'bullish';
+  if (dir === 'bearish') return 'bearish';
+  return 'the other way';
+}
+
+function BiasTapeStrip({ tape }) {
+  if (!tape?.length) return null;
+  return (
+    <div className="insidr-desk-bias__tape" role="list" aria-label="Live tape context">
+      {tape.map((m) => (
+        <div
+          key={m.label}
+          className={`insidr-desk-bias__tape-cell insidr-desk-bias__tape-cell--${m.tone}`}
+          role="listitem"
+        >
+          <span className="insidr-desk-bias__tape-label">{m.label}</span>
+          <span className="insidr-desk-bias__tape-value">{m.value}</span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BiasFactorCard({ card, variant, onNewsClick }) {
+  const snippets = card.newsItems?.length
+    ? card.newsItems
+    : card.news
+      ? [card.news]
+      : [];
+
   return (
     <article className={`insidr-desk-bias__card insidr-desk-bias__card--${variant}`}>
       <h5 className="insidr-desk-bias__card-title">
@@ -39,13 +68,64 @@ function BiasFactorCard({ card, variant }) {
         {card.title}
       </h5>
       <p className="insidr-desk-bias__card-body">{card.body}</p>
-      {card.news && (
-        <div className="insidr-desk-bias__news-snippet">
-          <p className="insidr-desk-bias__news-headline">{card.news.title}</p>
-          <span className="insidr-desk-bias__news-ago">{card.news.ago}</span>
+      {card.evidence?.length > 0 && (
+        <div className="insidr-desk-bias__evidence" role="list" aria-label="Data backing this factor">
+          {card.evidence.map((chip) => (
+            <span key={`${chip.label}-${chip.value}`} className="insidr-desk-bias__evidence-chip" role="listitem">
+              <span className="insidr-desk-bias__evidence-label">{chip.label}</span>
+              <span className="insidr-desk-bias__evidence-value">{chip.value}</span>
+            </span>
+          ))}
+        </div>
+      )}
+      {snippets.length > 0 && (
+        <div className="insidr-desk-bias__news-list">
+          {snippets.map((n) => (
+            <button
+              key={n.id || n.title}
+              type="button"
+              className={`insidr-desk-bias__news-snippet ${n.highlight ? 'insidr-desk-bias__news-snippet--hot' : ''}`}
+              onClick={() => onNewsClick?.(n)}
+              title={n.title}
+            >
+              <p className="insidr-desk-bias__news-headline">{n.title}</p>
+              <span className="insidr-desk-bias__news-ago">{n.ago}</span>
+            </button>
+          ))}
         </div>
       )}
     </article>
+  );
+}
+
+function BiasColumn({ title, wordPill, wordClass, cards, variant, expanded, onToggleMore, onNewsClick }) {
+  const visible = expanded ? cards : cards.slice(0, VISIBLE_DEFAULT);
+  const extra = cards.length - VISIBLE_DEFAULT;
+
+  return (
+    <div className={`insidr-desk-bias__col insidr-desk-bias__col--${variant}`}>
+      <h4>{title}</h4>
+      <div className="insidr-desk-bias__card-stack">
+        {cards.length === 0 ? (
+          <p className="insidr-desk-bias__col-empty">Factors will appear as headlines sync for this symbol.</p>
+        ) : (
+          visible.map((card) => (
+            <BiasFactorCard
+              key={`${card.title}-${variant}`}
+              card={card}
+              variant={variant}
+              onNewsClick={onNewsClick}
+            />
+          ))
+        )}
+      </div>
+      {extra > 0 && (
+        <button type="button" className="insidr-desk-bias__more" onClick={onToggleMore}>
+          {expanded ? 'Show less' : `Show ${extra} more`}
+          <ChevronDown size={12} className={expanded ? 'rotate-180' : ''} />
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -55,6 +135,8 @@ const InsidrDeskBiasPanel = ({
   analysisState,
   prices = {},
   brief,
+  newsPool = [],
+  changePercent,
   deskData,
   deskLoading,
   onDeskRefresh,
@@ -62,12 +144,16 @@ const InsidrDeskBiasPanel = ({
   onTabChange,
   onCalendarEventInsight,
   onSelectAsset,
+  onNewsSelect,
+  chartInterval = '1h',
+  chartPeriod = '1W',
 }) => {
   const [internalTab, setInternalTab] = useState('bias');
   const tab = controlledTab ?? internalTab;
   const setTab = onTabChange ?? setInternalTab;
 
-  const [showMoreBear, setShowMoreBear] = useState(false);
+  const [showMoreSupport, setShowMoreSupport] = useState(false);
+  const [showMoreFlip, setShowMoreFlip] = useState(false);
 
   const { technical, loading, refresh, meta } = analysisState || {};
   const bias = technical?.bias || 'neutral';
@@ -76,30 +162,34 @@ const InsidrDeskBiasPanel = ({
 
   const liveBrief = brief || deskData?.brief;
 
-  const bullishCards = useMemo(
-    () => buildBullishBiasCards({ symbol, technical, selectedNews, brief: liveBrief, prices }),
-    [symbol, technical, selectedNews, liveBrief, prices],
+  const deskView = useMemo(
+    () =>
+      buildBiasDeskColumns({
+        symbol,
+        bias,
+        technical,
+        brief: liveBrief,
+        prices,
+        deskData,
+        selectedNews,
+        newsPool,
+        changePercent,
+        chartInterval,
+        chartPeriod,
+      }),
+    [symbol, bias, technical, liveBrief, prices, deskData, selectedNews, newsPool, changePercent, chartInterval, chartPeriod],
   );
 
-  const bearishCards = useMemo(
-    () => buildBearishBiasCards({ symbol, technical, brief: liveBrief, prices }),
-    [symbol, technical, liveBrief, prices],
-  );
+  const { supportCards, flipCards, tape, summary, flipDir, headlineCount, timeframeSummary } = deskView;
+  const supportVariant = deskView.supportDir === 'bearish' ? 'bear' : 'bull';
+  const flipVariant = flipDir === 'bearish' ? 'bear' : 'bull';
 
-  const primaryBull = prioritizeBiasCards(bullishCards, 2, [
-    /support at/i,
-    /risk-on regime/i,
-    /timeframes aligned/i,
-    /higher timeframe/i,
-  ]);
-  const primaryBear = prioritizeBiasCards(bearishCards, 2, [
-    /htf bearish/i,
-    /rejection at/i,
-    /risk-off/i,
-    /ltf bearish/i,
-  ]);
-  const extraBear = bearishCards.slice(2);
-  const visibleBear = showMoreBear ? bearishCards : primaryBear;
+  const handleNewsSnippet = (snippet) => {
+    const match = (newsPool || []).find(
+      (n) => (n.title || '').toUpperCase() === snippet.title || n.title === snippet.title,
+    );
+    if (match) onNewsSelect?.(match, symbol);
+  };
 
   if (!symbol) return null;
 
@@ -139,46 +229,72 @@ const InsidrDeskBiasPanel = ({
       <div className="insidr-desk-bias__scroll custom-scrollbar">
         {tab === 'bias' && (
           <div className="insidr-desk-bias__body" role="tabpanel">
+            {loading && !summary && supportCards.length === 0 && flipCards.length === 0 ? (
+              <DeskPanelSkeleton rows={4} />
+            ) : (
+              <>
             <h3 className="insidr-desk-bias__headline">
               The day trading bias on <strong>{symbol}</strong> is{' '}
               <span className={`insidr-desk-bias__pill ${phrase.className}`}>{phrase.text}</span>
             </h3>
-            <p className="insidr-desk-bias__updated">Updated {updatedLabel}</p>
+            <p className="insidr-desk-bias__updated">
+              Updated {updatedLabel}
+              {headlineCount > 0 && (
+                <span className="insidr-desk-bias__wire-count">
+                  {' '}
+                  · {headlineCount} headlines in context
+                </span>
+              )}
+            </p>
+
+            <BiasTapeStrip tape={tape} />
+
+            {timeframeSummary && (
+              <p className="insidr-desk-bias__tf-context">{timeframeSummary}</p>
+            )}
+
+            {summary && <p className="insidr-desk-bias__summary">{summary}</p>}
 
             <div className="insidr-desk-bias__columns">
-              <div className="insidr-desk-bias__col insidr-desk-bias__col--bull">
-                <h4>
-                  What supports the{' '}
-                  <span className="insidr-desk-bias__word-pill insidr-desk-bias__word-pill--bull">bias</span>?
-                </h4>
-                <div className="insidr-desk-bias__card-stack">
-                  {primaryBull.map((card) => (
-                    <BiasFactorCard key={card.title} card={card} variant="bull" />
-                  ))}
-                </div>
-              </div>
-              <div className="insidr-desk-bias__col insidr-desk-bias__col--bear">
-                <h4>
-                  What could flip it{' '}
-                  <span className="insidr-desk-bias__word-pill insidr-desk-bias__word-pill--bear">bearish</span>?
-                </h4>
-                <div className="insidr-desk-bias__card-stack">
-                  {visibleBear.map((card) => (
-                    <BiasFactorCard key={card.title} card={card} variant="bear" />
-                  ))}
-                </div>
-                {extraBear.length > 0 && (
-                  <button
-                    type="button"
-                    className="insidr-desk-bias__more"
-                    onClick={() => setShowMoreBear((v) => !v)}
-                  >
-                    {showMoreBear ? 'Show less' : `Show ${extraBear.length} more`}
-                    <ChevronDown size={12} className={showMoreBear ? 'rotate-180' : ''} />
-                  </button>
-                )}
-              </div>
+              <BiasColumn
+                title={
+                  <>
+                    What supports the{' '}
+                    <span
+                      className={`insidr-desk-bias__word-pill insidr-desk-bias__word-pill--${supportVariant === 'bear' ? 'bear' : 'bull'}`}
+                    >
+                      bias
+                    </span>
+                    ?
+                  </>
+                }
+                cards={supportCards}
+                variant={supportVariant}
+                expanded={showMoreSupport}
+                onToggleMore={() => setShowMoreSupport((v) => !v)}
+                onNewsClick={handleNewsSnippet}
+              />
+              <BiasColumn
+                title={
+                  <>
+                    What could flip it{' '}
+                    <span
+                      className={`insidr-desk-bias__word-pill insidr-desk-bias__word-pill--${flipVariant === 'bear' ? 'bear' : 'bull'}`}
+                    >
+                      {flipWord(flipDir)}
+                    </span>
+                    ?
+                  </>
+                }
+                cards={flipCards}
+                variant={flipVariant}
+                expanded={showMoreFlip}
+                onToggleMore={() => setShowMoreFlip((v) => !v)}
+                onNewsClick={handleNewsSnippet}
+              />
             </div>
+              </>
+            )}
           </div>
         )}
 

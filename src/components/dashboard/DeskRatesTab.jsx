@@ -5,7 +5,7 @@ import { api } from '../../services/api/api.js';
 import DeskSparkline from './DeskSparkline.jsx';
 import DeskPanelSkeleton from './DeskPanelSkeleton.jsx';
 import DeskEventAnalysisPanel from './DeskEventAnalysisPanel.jsx';
-import { CENTRAL_BANKS } from '../../utils/deskBiasContent.js';
+import { formatMacroValue } from '../../utils/displayFormat.js';
 import {
   filterCbEvents,
   formatRateSource,
@@ -14,6 +14,7 @@ import {
   resolveRateSeries,
   stanceFromEconomy,
 } from '../../utils/deskRates.js';
+import { CENTRAL_BANKS } from '../../utils/deskBiasContent.js';
 
 function RatePathChart({ series, latestRate, label, source, loading }) {
   if (loading) {
@@ -337,7 +338,7 @@ const DeskRatesTab = ({ deskData, loading, onRefresh, symbol = 'XAUUSD', prices 
                     {row.trend?.length >= 2 ? (
                       <DeskSparkline values={row.trend} variant="purple" />
                     ) : (
-                      '—'
+                      <span className="desk-rates__spark-empty">Awaiting rate path</span>
                     )}
                   </td>
                   <td className="insidr-desk-bias__rates-date">{row.date}</td>
@@ -346,7 +347,9 @@ const DeskRatesTab = ({ deskData, loading, onRefresh, symbol = 'XAUUSD', prices 
                       {row.outcome}
                     </span>
                   </td>
-                  <td className="insidr-desk-bias__rates-date">{row.previous ?? '—'}</td>
+                  <td className="insidr-desk-bias__rates-date">
+                    {formatMacroValue(row.previous, 'previous')}
+                  </td>
                 </tr>
               ))}
             </tbody>

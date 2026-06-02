@@ -11,7 +11,7 @@ import { friendlyApiError } from '../utils/friendlyApiError.js';
 
 export { friendlyApiError };
 
-const REFRESH_MS = 20_000;
+const REFRESH_MS = 12_000;
 
 const DEFAULT_PROFILE = {
   typical_behaviour:
@@ -77,12 +77,12 @@ function waitingBundle(symbol, interval, period) {
       summary: 'Connecting to live market data for a real multi-timeframe read…',
       modules: {
         marketStructure: {
-          htf: { trend: '—', label: `${stack.htf.interval} · ${stack.htf.period}` },
-          ltf: { trend: '—', label: `${formatIntervalLabel(interval)} · ${period}` },
-          alignment: null,
+          htf: { trend: 'NEUTRAL', label: `${stack.htf.interval} · ${stack.htf.period}` },
+          ltf: { trend: 'NEUTRAL', label: `${formatIntervalLabel(interval)} · ${period}` },
+          alignment: 'MIXED',
         },
         momentum: { rsi: null, state: null },
-        volatility: { state: '—', atrPct: null },
+        volatility: { state: 'NORMAL', atrPct: null },
         levels: { support: null, resistance: null, last: null },
       },
     },

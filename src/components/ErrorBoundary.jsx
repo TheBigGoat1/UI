@@ -24,8 +24,13 @@ class ErrorBoundary extends React.Component {
     const { error } = this.state;
     if (!error) return this.props.children;
 
+    const wrapperClass = [
+      'flex items-center justify-center p-6',
+      this.props.className ? this.props.className : 'min-h-[240px]',
+    ].join(' ');
+
     return (
-      <div className="min-h-[240px] flex items-center justify-center p-8">
+      <div className={wrapperClass}>
         <div className="max-w-md w-full rounded-xl border border-red-500/30 bg-red-500/5 p-6 text-center space-y-4">
           <AlertTriangle size={32} className="mx-auto text-red-400" />
           <div>
@@ -40,7 +45,7 @@ class ErrorBoundary extends React.Component {
               <p className="text-xs font-mono text-red-300/80 mt-2 break-all">{error.message}</p>
             )}
           </div>
-          <div className="flex gap-2 justify-center">
+          <div className="flex gap-2 justify-center flex-wrap">
             <button
               type="button"
               onClick={this.handleRetry}

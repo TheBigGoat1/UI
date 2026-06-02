@@ -1,54 +1,68 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../../services/api/api.js';
-
-function formatCountdown(minutes) {
-  if (minutes == null || minutes < 0) return '—';
-  if (minutes < 60) return `${minutes}m`;
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return m > 0 ? `${h}h ${m}m` : `${h}h`;
-}
+import { formatCountdownMinutes } from '../../utils/displayFormat.js';
 
 const MrktChartEventBadge = ({ symbol, onClick }) => {
-  const [gate, setGate] = useState(null);
+  const [count, setCount] = useState(0);
+  const [minutes, setMinutes] = useState(null);
 
   useEffect(() => {
-    if (!symbol) return;
     let active = true;
     const load = () => {
-      api.trader
-        .getEventGate(symbol)
-        .then((res) => {
-          if (active && res?.success) setGate(res.data);
+      const from = new Date();
+      const to = new Date(from.getTime() + 14 * 24 * 60 * 60 * 1000);
+      api.calendar
+        .getEvents({
+          from: from.toISOString(),
+          to: to.toISOString(),
+          country: 'US',
+          importance: 'HIGH',
+          limit: 30,
         })
-        .catch(() => {});
+        .then((res) => {
+          if (!active) return;
+          const rows = res?.data || [];
+          const now = Date.now();
+          const upcoming = rows.filter((e) => new Date(e.event_time).getTime() >= now - 60000);
+          setCount(upcoming.length);
+          const next = upcoming[0];
+          if (next?.event_time) {
+            const mins = Math.round((new Date(next.event_time).getTime() - now) / 60000);
+            setMinutes(mins);
+          } else {
+            setMinutes(null);
+          }
+        })
+        .catch(() => {
+          if (active) {
+            setCount(0);
+            setMinutes(null);
+          }
+        });
     };
     load();
-    const id = setInterval(load, 60_000);
+    const id = setInterval(load, 20000);
     return () => {
       active = false;
       clearInterval(id);
     };
   }, [symbol]);
 
-  const count = gate?.eventCount ?? (gate?.nextEvent ? 1 : 0);
-  if (!count && !gate?.warning) return null;
-
-  const mins = gate?.minutesUntil;
-
   return (
     <button
       type="button"
       className="mrkt-chart-event-badge"
       onClick={onClick}
-      aria-label={`${count} upcoming macro events — open calendar`}
+      aria-label={`${count} upcoming macro events. Open calendar.`}
     >
       <span className="mrkt-chart-event-badge__ring">
-        <span className="mrkt-chart-event-badge__dot" />
+        <span className="mrkt-chart-event-badge__dot" aria-hidden />
       </span>
       <span className="mrkt-chart-event-badge__text">
-        <strong>{count} events</strong>
-        <span>{formatCountdown(mins)}</span>
+        <strong>
+          {count} event{count === 1 ? '' : 's'}
+        </strong>
+        <span>{formatCountdownMinutes(minutes)}</span>
       </span>
     </button>
   );

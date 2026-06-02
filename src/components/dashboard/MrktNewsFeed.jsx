@@ -1,19 +1,14 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import {
-  TrendingUp,
   Zap,
   Landmark,
   ArrowRight,
   Bookmark,
   Check,
-  Info,
-  Filter,
   Search,
-  Volume2,
-  VolumeX,
-  BarChart3,
   Loader2,
+  AlertCircle,
 } from 'lucide-react';
 import { api } from '../../services/api/api.js';
 import MrktNewsCard from './MrktNewsCard.jsx';
@@ -24,22 +19,16 @@ import {
   primaryAssetForNews,
   isBreakingItem,
 } from '../../utils/newsAssets.js';
+import { userMessageFromError } from '../../utils/apiError.js';
+
+const NEWS_POLL_MS = 12000;
 
 const TABS = [
   { id: 'all', label: 'All', icon: null },
-  { id: 'popular', label: 'Popular', icon: TrendingUp, iconClass: 'text-orange-400' },
-  { id: 'breaking', label: 'Breaking News', icon: null, dot: true },
+  { id: 'breaking', label: 'Breaking', icon: null, dot: true },
   { id: 'high', label: 'High Impact', icon: Zap, iconClass: 'text-red-400' },
-  { id: 'econ', label: 'Economic Data', icon: Landmark, iconClass: 'text-[#8b5cf6]' },
+  { id: 'econ', label: 'Economic', icon: Landmark, iconClass: 'text-[#8b5cf6]' },
 ];
-
-function isHighlightCard(item, tab, idx) {
-  if (tab === 'breaking') return idx > 0 && idx < 4;
-  const score = Math.abs(item?.sentiment_score ?? 0);
-  if (score > 0.35 && idx > 0 && idx < 3) return true;
-  if (tab === 'high' && idx > 0 && idx < 2) return true;
-  return false;
-}
 
 function showAssetsOnCard(item, idx, tab) {
   if (idx === 0) return true;
@@ -50,6 +39,9 @@ function showAssetsOnCard(item, idx, tab) {
 
 const MrktNewsFeed = ({
   asset,
+  wireItems = null,
+  wireLoading = false,
+  onWireSync,
   canAiInsight = true,
   onUpgrade,
   onSelectAsset,
@@ -57,29 +49,32 @@ const MrktNewsFeed = ({
   onNewsSelect,
   marketContext,
   prices: pricesProp,
+  newsError,
+  onNewsRefresh,
 }) => {
+  const useWire = wireItems != null;
   const [tab, setTab] = useState('all');
-  const [items, setItems] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [localItems, setLocalItems] = useState([]);
+  const [localLoading, setLocalLoading] = useState(!useWire);
+  const [feedError, setFeedError] = useState('');
   const [savedOnly, setSavedOnly] = useState(false);
   const [bookmarks, setBookmarks] = useState([]);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [filterBreaking, setFilterBreaking] = useState(false);
-  const [muted, setMuted] = useState(false);
   const prices = pricesProp || {};
   const [toast, setToast] = useState(null);
-  const [infoOpen, setInfoOpen] = useState(false);
 
-  const hasItemsInOtherTabs = tab !== 'all' && items.length > 0 && filtered.length === 0;
+  const items = useWire ? wireItems : localItems;
+  const loading = useWire ? wireLoading : localLoading;
+  const activeError = feedError || newsError || '';
 
   const showToast = (msg) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2200);
   };
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const loadLocal = useCallback(async () => {
+    setLocalLoading(true);
     try {
       let rows = [];
       if (asset) {
@@ -94,29 +89,41 @@ const MrktNewsFeed = ({
         const live = await api.news.getFeed(24);
         rows = live?.data || [];
       }
-      setItems(Array.isArray(rows) ? rows : []);
-    } catch {
-      setItems([]);
+      setLocalItems(Array.isArray(rows) ? rows : []);
+      setFeedError('');
+    } catch (err) {
+      setFeedError(userMessageFromError(err, 'News feed reconnecting. Tap sync to retry.'));
     } finally {
-      setLoading(false);
+      setLocalLoading(false);
     }
   }, [asset]);
 
+  const syncWire = useCallback(() => {
+    if (useWire) {
+      onWireSync?.();
+      onNewsRefresh?.();
+      return;
+    }
+    loadLocal();
+    onNewsRefresh?.();
+  }, [useWire, onWireSync, onNewsRefresh, loadLocal]);
+
   useEffect(() => {
-    load();
-    setBookmarks(getBookmarks());
-    const id = setInterval(load, 120000);
+    if (useWire) return undefined;
+    loadLocal();
+    const id = setInterval(loadLocal, NEWS_POLL_MS);
     return () => clearInterval(id);
-  }, [load]);
+  }, [loadLocal, useWire]);
+
+  useEffect(() => {
+    setBookmarks(getBookmarks());
+  }, [savedOnly]);
 
   const filtered = useMemo(() => {
     let list = tab === 'all' ? items : items.filter((item) => matchesNewsTab(item, tab));
     if (savedOnly) {
       const ids = new Set(bookmarks.map((b) => b.id));
       list = list.filter((item) => ids.has(articleId(item)));
-    }
-    if (filterBreaking) {
-      list = list.filter((item) => isBreakingItem(item));
     }
     const q = searchQuery.trim().toLowerCase();
     if (q) {
@@ -126,16 +133,15 @@ const MrktNewsFeed = ({
       });
     }
     return list;
-  }, [items, tab, savedOnly, bookmarks, filterBreaking, searchQuery]);
+  }, [items, tab, savedOnly, bookmarks, searchQuery]);
 
-  const tabCounts = useMemo(() => {
-    const counts = { all: items.length };
-    TABS.forEach((t) => {
-      if (t.id === 'all') return;
-      counts[t.id] = items.filter((item) => matchesNewsTab(item, t.id)).length;
-    });
-    return counts;
-  }, [items]);
+  const hasItemsInOtherTabs = tab !== 'all' && items.length > 0 && filtered.length === 0;
+  const emptyMode = useMemo(() => {
+    if (searchQuery.trim()) return 'search';
+    if (savedOnly) return 'saved';
+    if (items.length === 0) return 'wire';
+    return 'filter';
+  }, [searchQuery, savedOnly, items.length]);
 
   const selectedId = selectedNews ? articleId(selectedNews) : null;
 
@@ -161,30 +167,8 @@ const MrktNewsFeed = ({
       )}
 
       <div className="mrkt-news__head">
-        <h2 className="mrkt-news__title">
-          News Feed
-          <button
-            type="button"
-            className={`mrkt-news__info ${infoOpen ? 'mrkt-news__info--on' : ''}`}
-            title="Insidr wires headlines with desk context and analysis"
-            aria-label="About news feed"
-            aria-expanded={infoOpen}
-            onClick={() => setInfoOpen((v) => !v)}
-          >
-            <Info size={14} />
-          </button>
-        </h2>
+        <h2 className="mrkt-news__title">News Feed</h2>
         <div className="mrkt-news__actions">
-          <button
-            type="button"
-            className={`mrkt-news__icon-btn ${filterBreaking ? 'mrkt-news__icon-btn--active' : ''}`}
-            onClick={() => setFilterBreaking((v) => !v)}
-            title="Breaking only"
-            aria-label="Filter breaking news"
-            aria-pressed={filterBreaking}
-          >
-            <Filter size={15} />
-          </button>
           <button
             type="button"
             className={`mrkt-news__icon-btn ${searchOpen ? 'mrkt-news__icon-btn--active' : ''}`}
@@ -194,19 +178,6 @@ const MrktNewsFeed = ({
             aria-expanded={searchOpen}
           >
             <Search size={15} />
-          </button>
-          <button
-            type="button"
-            className={`mrkt-news__icon-btn ${muted ? 'mrkt-news__icon-btn--active' : ''}`}
-            onClick={() => {
-              setMuted((v) => !v);
-              showToast(muted ? 'Alerts on' : 'Headline alerts muted');
-            }}
-            title="Mute headline alerts"
-            aria-label="Mute"
-            aria-pressed={muted}
-          >
-            {muted ? <VolumeX size={15} /> : <Volume2 size={15} />}
           </button>
           <button
             type="button"
@@ -224,10 +195,13 @@ const MrktNewsFeed = ({
         </div>
       </div>
 
-      {infoOpen && (
-        <div className="mrkt-news__info-panel" role="note">
-          Live headlines for <strong>{asset}</strong> with Insidr Analysis (brain), bookmarks, and asset
-          chips. Tabs filter by impact — empty tabs still show typical movers below.
+      {activeError && (
+        <div className="mrkt-news__sync-row mrkt-news__sync-row--warn" role="alert">
+          <AlertCircle size={12} aria-hidden />
+          <span>{activeError}</span>
+          <button type="button" className="mrkt-news__sync-btn" onClick={syncWire}>
+            Retry wire
+          </button>
         </div>
       )}
 
@@ -261,9 +235,6 @@ const MrktNewsFeed = ({
             >
               {Icon && <Icon size={12} className={t.iconClass} aria-hidden />}
               <span>{t.label}</span>
-              <span className="mrkt-news__tab-count" aria-label={`${tabCounts[t.id] ?? 0} headlines`}>
-                {tabCounts[t.id] ?? 0}
-              </span>
               {t.dot && <span className="mrkt-news__tab-dot" aria-hidden />}
             </button>
           );
@@ -285,9 +256,16 @@ const MrktNewsFeed = ({
           ) : !filtered.length ? (
             <NewsTabEmptyState
               tab={tab}
+              mode={emptyMode}
               hasItemsInOtherTabs={hasItemsInOtherTabs}
-              onShowAll={() => setTab('all')}
-              onReload={load}
+              onShowAll={() => {
+                setTab('all');
+                setSavedOnly(false);
+                setSearchQuery('');
+                setSearchOpen(false);
+              }}
+              onClearSaved={() => setSavedOnly(false)}
+              onReload={syncWire}
               loading={loading}
               prices={prices}
               deskAsset={asset}
@@ -299,7 +277,7 @@ const MrktNewsFeed = ({
                 <MrktNewsCard
                   key={`${id}-${idx}`}
                   item={item}
-                  highlight={isHighlightCard(item, tab, idx)}
+                  highlight={idx === 0 && tab === 'all'}
                   breaking={isBreakingItem(item) || (tab === 'breaking' && idx === 0)}
                   showAssets={showAssetsOnCard(item, idx, tab)}
                   selected={selectedId === id}
@@ -321,11 +299,11 @@ const MrktNewsFeed = ({
 
       <footer className="mrkt-news__footer">
         <Link to="/dashboard/ideas" className="mrkt-news__footer-link">
-          <BarChart3 size={14} aria-hidden />
-          View Market Recap
+          Trade ideas
+          <ArrowRight size={12} aria-hidden />
         </Link>
         <Link to="/dashboard/news" className="mrkt-news__footer-link">
-          View Recent Headlines
+          Full news page
           <ArrowRight size={12} aria-hidden />
         </Link>
       </footer>

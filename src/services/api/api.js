@@ -129,6 +129,7 @@ export const api = {
 
   market: {
     getAllPrices: () => request('GET', '/market/prices'),
+    getQuote: (symbol) => request('GET', `/market/quote/${encodeURIComponent(symbol)}`),
     getHistory: async (symbol, interval = '1day', period = '1M') => {
       try {
         const res = await request('GET', `/market/history/${symbol}`, null, {

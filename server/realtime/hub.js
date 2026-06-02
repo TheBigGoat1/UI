@@ -38,7 +38,7 @@ async function startBroadcastLoop() {
     } catch (err) {
       if (ioRef) ioRef.emit("system:error", { scope: "market:prices", message: err.message });
     }
-  }, 5000);
+  }, 1000);
 
   setInterval(async () => {
     try {

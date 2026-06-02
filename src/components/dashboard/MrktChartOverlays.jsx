@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Brain } from 'lucide-react';
+import MrktChartInteractionLayer from './MrktChartInteractionLayer.jsx';
 
 function priceY(price, min, max) {
   if (!Number.isFinite(price) || max <= min) return 50;
@@ -81,6 +82,10 @@ const MrktChartOverlays = ({
   symbol,
   annotations = [],
   calendarEvents = [],
+  chartBars = [],
+  chartInterval = '1h',
+  newsPool = [],
+  isLiveTape = true,
   onMarkerSelect,
   onCandleOpen,
   onChartTap,
@@ -207,11 +212,22 @@ const MrktChartOverlays = ({
     onCandleOpen?.(payload);
   };
 
-  if (!showLabels && !showTargets && !chartEvents.length) return null;
+  if (!showLabels && !showTargets && !chartEvents.length && chartBars.length < 2) return null;
 
   return (
     <div className="mrkt-chart-overlays" aria-hidden={!showLabels && !showTargets}>
-      {onChartTap && (
+      {chartBars.length >= 2 && onCandleOpen && (
+        <MrktChartInteractionLayer
+          bars={chartBars}
+          interval={chartInterval}
+          symbol={symbol}
+          newsPool={newsPool}
+          isLiveTape={isLiveTape}
+          onCandleOpen={onCandleOpen}
+        />
+      )}
+
+      {onChartTap && !chartBars.length && (
         <button
           type="button"
           className="mrkt-chart-tap-layer"
@@ -221,6 +237,15 @@ const MrktChartOverlays = ({
             e.stopPropagation();
             onChartTap(buildSessionHeadline());
           }}
+        />
+      )}
+
+      {onChartTap && chartBars.length >= 2 && (
+        <button
+          type="button"
+          className="mrkt-chart-tap-layer mrkt-chart-tap-layer--passive"
+          aria-hidden
+          tabIndex={-1}
         />
       )}
 

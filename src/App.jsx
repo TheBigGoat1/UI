@@ -140,6 +140,7 @@ function AppRoutes() {
             <Route path="pricing" element={<LazyPage title="Pricing error"><Pricing /></LazyPage>} />
       
             <Route path="backtest" element={<LazyPage title="Backtest error"><Backtest /></LazyPage>} />
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
           </Route>
 
           <Route
