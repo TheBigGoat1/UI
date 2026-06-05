@@ -1,69 +1,13 @@
-/** Map platform symbols → TradingView exchange:symbol format */
+/** Map platform symbols → TradingView exchange:symbol (shared with server/config/assets.js) */
 
-const CRYPTO_TV = {
-  BTCUSD: 'BINANCE:BTCUSDT',
-  ETHUSD: 'BINANCE:ETHUSDT',
-  BNBUSD: 'BINANCE:BNBUSDT',
-  SOLUSD: 'BINANCE:SOLUSDT',
-  XRPUSD: 'BINANCE:XRPUSDT',
-  ADAUSD: 'BINANCE:ADAUSDT',
-  DOGEUSD: 'BINANCE:DOGEUSDT',
-  AVAXUSD: 'BINANCE:AVAXUSDT',
-  LINKUSD: 'BINANCE:LINKUSDT',
-  DOTUSD: 'BINANCE:DOTUSDT',
-  LTCUSD: 'BINANCE:LTCUSDT',
-  ATOMUSD: 'BINANCE:ATOMUSDT',
-  TRXUSD: 'BINANCE:TRXUSDT',
-  BCHUSD: 'BINANCE:BCHUSDT',
-  ETCUSD: 'BINANCE:ETCUSDT',
-  NEARUSD: 'BINANCE:NEARUSDT',
-  APTUSD: 'BINANCE:APTUSDT',
-  ARBUSD: 'BINANCE:ARBUSDT',
-  OPUSD: 'BINANCE:OPUSDT',
-  SUIUSD: 'BINANCE:SUIUSDT',
-  UNIUSD: 'BINANCE:UNIUSDT',
-  FILUSD: 'BINANCE:FILUSDT',
-};
+import { getTradingViewTicker, getAssetMeta } from '@server/config/assets.js';
 
-const FOREX_CODES = new Set([
-  'USD',
-  'EUR',
-  'GBP',
-  'JPY',
-  'AUD',
-  'CAD',
-  'CHF',
-  'NZD',
-  'NOK',
-  'SEK',
-  'SGD',
-  'HKD',
-]);
-
-const COMMODITY_TV = {
-  XAUUSD: 'FOREXCOM:XAUUSD',
-  XAGUSD: 'FOREXCOM:XAGUSD',
-  USOIL: 'TVC:USOIL',
-  CLUSD: 'TVC:USOIL',
-  BZUSD: 'TVC:UKOIL',
-  NATGAS: 'TVC:NATGAS',
-  COPPER: 'COMEX:HG1!',
-};
-
-const INDEX_TV = {
-  US500: 'SP:SPX',
-  US30: 'DJ:DJI',
-  NAS100: 'NASDAQ:NDX',
+const ALIAS_TV = {
   ESUSD: 'SP:SPX',
   NQUSD: 'NASDAQ:NDX',
   US30USD: 'DJ:DJI',
-  DXY: 'TVC:DXY',
-  VIX: 'CBOE:VIX',
+  CLUSD: 'TVC:USOIL',
   US10Y: 'TVC:US10Y',
-  GER40: 'XETR:DAX',
-  UK100: 'TVC:UKX',
-  JP225: 'TVC:NI225',
-  HK50: 'HSI:HSI',
 };
 
 const INTERVAL_MAP = {
@@ -81,16 +25,9 @@ export function toTradingViewSymbol(asset) {
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '');
   if (!key) return 'FX:EURUSD';
-  if (CRYPTO_TV[key]) return CRYPTO_TV[key];
-  if (COMMODITY_TV[key]) return COMMODITY_TV[key];
-  if (INDEX_TV[key]) return INDEX_TV[key];
-  if (key.length === 6 && FOREX_CODES.has(key.slice(0, 3)) && FOREX_CODES.has(key.slice(3, 6))) {
-    return `FX:${key}`;
-  }
-  if (key.endsWith('USD') && key.length > 6) {
-    const base = key.slice(0, -3);
-    return `BINANCE:${base}USDT`;
-  }
+  const fromCatalog = getTradingViewTicker(key);
+  if (fromCatalog) return fromCatalog;
+  if (ALIAS_TV[key]) return ALIAS_TV[key];
   return `FX:${key}`;
 }
 
@@ -103,10 +40,6 @@ export function isTradingViewSupportedAsset(asset) {
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, '');
   if (!key) return false;
-  if (CRYPTO_TV[key] || COMMODITY_TV[key] || INDEX_TV[key]) return true;
-  // Standard FX pairs like EURUSD, GBPJPY, etc.
-  if (key.length === 6 && FOREX_CODES.has(key.slice(0, 3)) && FOREX_CODES.has(key.slice(3, 6))) {
-    return true;
-  }
-  return false;
+  if (ALIAS_TV[key]) return true;
+  return Boolean(getTradingViewTicker(key) || getAssetMeta(key));
 }

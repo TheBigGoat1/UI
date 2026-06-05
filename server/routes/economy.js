@@ -5,6 +5,10 @@ import {
   listCountriesIntelligence,
 } from "../services/macroPipeline.js";
 import { ensureMacroDataReady } from "../services/macroBootstrap.js";
+import {
+  getMacroIndicatorsForCountry,
+  listMacroCountries,
+} from "../services/macroIndicators.js";
 
 const router = Router();
 
@@ -54,6 +58,20 @@ router.get("/countries/:country", async (req, res) => {
       },
       meta: { degraded: true },
     });
+  }
+});
+
+router.get("/indicators/countries", (_req, res) => {
+  res.json({ success: true, data: listMacroCountries() });
+});
+
+router.get("/indicators/:country", async (req, res) => {
+  try {
+    const data = await getMacroIndicatorsForCountry(req.params.country);
+    res.json({ success: true, data });
+  } catch (error) {
+    console.warn("[economy] indicators error:", error.message);
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 

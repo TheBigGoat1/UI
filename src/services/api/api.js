@@ -2,13 +2,44 @@ import axios from 'axios';
 import { getToken, clearToken } from '../auth/authStorage.js';
 import { engineModulesQueryValue } from '../../utils/engineModules.js';
 
-/** In dev, use Vite proxy (/api → :3001) so the UI always reaches the API on the same origin. */
+function getApiPort() {
+  return import.meta.env.VITE_API_URL?.match(/:(\d+)/)?.[1] || '3003';
+}
+
+function isApiOffline(error) {
+  if (
+    error?.offline ||
+    error?.code === 'ECONNREFUSED' ||
+    error?.code === 'ERR_NETWORK' ||
+    error?.code === 'ECONNABORTED' ||
+    error?.message?.includes('Network Error')
+  ) {
+    return true;
+  }
+  const status = error?.response?.status;
+  if (status === 502 || status === 503 || status === 504) return true;
+  // Vite dev proxy often returns 500 when the Express API is not running.
+  if (status === 500) {
+    const data = error?.response?.data;
+    if (!data || typeof data === 'string' || !data.error) return true;
+  }
+  return false;
+}
+
+function offlineErrorMessage() {
+  const port = getApiPort();
+  return import.meta.env.DEV
+    ? `API offline — run npm run dev:all (Express should listen on port ${port})`
+    : `API offline — ensure the server is running on port ${port}`;
+}
+
+/** In dev, use Vite proxy (/api → backend) so the UI always reaches the API on the same origin. */
 const API_BASE_URL =
   import.meta.env.VITE_API_URL && !import.meta.env.DEV
     ? import.meta.env.VITE_API_URL
     : import.meta.env.DEV
       ? '/api/v1'
-      : import.meta.env.VITE_API_URL || 'http://localhost:3001/api/v1';
+      : import.meta.env.VITE_API_URL || `http://localhost:${getApiPort()}/api/v1`;
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -31,7 +62,7 @@ const apiClient = axios.create({
       } catch {
         return {
           success: false,
-          error: 'Invalid JSON from API — is the backend running on port 3001?',
+          error: `Invalid JSON from API — is the backend running on port ${getApiPort()}?`,
         };
       }
     },
@@ -60,19 +91,14 @@ apiClient.interceptors.response.use(
         window.location.href = targetLogin;
       }
     }
-    const offline =
-      error.code === 'ECONNREFUSED' ||
-      error.code === 'ERR_NETWORK' ||
-      error.message?.includes('Network Error');
-    const apiPort =
-      import.meta.env.VITE_API_URL?.match(/:(\d+)/)?.[1] || '3001';
+    const offline = isApiOffline(error);
     return Promise.reject({
       success: false,
       error: offline
-        ? `API offline — run npm run dev:all (API should listen on port ${apiPort})`
+        ? offlineErrorMessage()
         : error.response?.data?.error ||
           error.response?.data?.message ||
-          `Server unreachable — ensure the API is running (port ${apiPort})`,
+          offlineErrorMessage(),
       status: error.response?.status,
       code: error.response?.data?.code,
       capability: error.response?.data?.capability,
@@ -304,6 +330,8 @@ export const api = {
   economy: {
     getCountries: () => request('GET', '/economy/countries'),
     getCountry: (country) => request('GET', `/economy/countries/${country}`),
+    getIndicatorCountries: () => request('GET', '/economy/indicators/countries'),
+    getIndicators: (country) => request('GET', `/economy/indicators/${encodeURIComponent(country)}`),
     sync: () => request('POST', '/economy/sync'),
   },
 

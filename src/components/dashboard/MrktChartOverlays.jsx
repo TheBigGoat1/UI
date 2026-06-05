@@ -1,12 +1,12 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Brain } from 'lucide-react';
 import MrktChartInteractionLayer from './MrktChartInteractionLayer.jsx';
-
-function priceY(price, min, max) {
-  if (!Number.isFinite(price) || max <= min) return 50;
-  const pct = ((max - price) / (max - min)) * 100;
-  return Math.min(90, Math.max(10, pct));
-}
+import MrktChartNewsLabel from './MrktChartNewsLabel.jsx';
+import {
+  computeChartPriceRange,
+  priceToYPercent,
+  distributeLevelLines,
+} from '../../utils/chartLayout.js';
 
 function BrainHoverPrompt({ style, visible, onClick }) {
   if (!visible) return null;
@@ -23,44 +23,6 @@ function BrainHoverPrompt({ style, visible, onClick }) {
       <Brain size={14} aria-hidden />
       <span>What can push price here?</span>
     </button>
-  );
-}
-
-function MarkerCallout({ marker, onOpenAnalysis, onKeepOpen, onClose }) {
-  const summary = marker.item?.description || marker.item?.summary || null;
-  const hasNews = Boolean(marker.item?.title);
-
-  return (
-    <div
-      className="mrkt-chart-callout mrkt-chart-callout--open"
-      style={{ top: `${marker.top}%`, left: `${marker.left}%` }}
-      onMouseEnter={onKeepOpen}
-      onMouseLeave={onClose}
-      onClick={(e) => e.stopPropagation()}
-      role="tooltip"
-    >
-      <span className="mrkt-chart-callout__line" aria-hidden />
-      <div className="mrkt-chart-callout__box">
-        {marker.sub && <span className="mrkt-chart-callout__sub">{marker.sub}</span>}
-        <p className="mrkt-chart-callout__title">{marker.text}</p>
-        {summary && <p className="mrkt-chart-callout__summary">{summary}</p>}
-        {hasNews && onOpenAnalysis ? (
-          <button
-            type="button"
-            className="mrkt-chart-callout__cta"
-            onClick={(e) => {
-              e.stopPropagation();
-              onOpenAnalysis(marker.item);
-            }}
-          >
-            <Brain size={12} aria-hidden />
-            Open candle analysis
-          </button>
-        ) : (
-          <span className="mrkt-chart-callout__hint">Click for full session analysis</span>
-        )}
-      </div>
-    </div>
   );
 }
 
@@ -92,42 +54,51 @@ const MrktChartOverlays = ({
     const p = Number(price) || 4500;
     const s = Number(support) || p * 0.99;
     const r = Number(resistance) || p * 1.01;
-    const min = Math.min(s, p) * 0.988;
-    const max = Math.max(r, p) * 1.012;
-    return { min, max, support: s, resistance: r, price: p };
-  }, [price, support, resistance]);
+    const fromBars = computeChartPriceRange(chartBars, [s, r, p]);
+    return { ...fromBars, support: s, resistance: r, price: p };
+  }, [price, support, resistance, chartBars]);
 
   const markers = useMemo(() => {
-    if (annotations.length) {
-      return annotations.map((a, i) => ({
-        id: a.id || `m-${i}`,
-        left: a.left ?? 30 + i * 12,
-        top: a.top ?? priceY(range.price, range.min, range.max),
-        text: a.text,
-        sub: a.sub,
-        variant: a.item ? 'purple' : i % 2 === 0 ? 'purple' : 'red',
-        item: a.item,
-      }));
-    }
-    return [];
-  }, [annotations, showLabels, range, symbol]);
+    if (!annotations.length) return [];
+    return annotations;
+  }, [annotations]);
 
   const chartEvents = useMemo(() => {
     if (!showCalendarEvents || !calendarEvents.length) return [];
-    return calendarEvents.slice(0, 6).map((ev, i) => ({
-      id: ev.id || `cal-${i}`,
-      left: 18 + i * 14,
-      label: (ev.event_name || ev.event || 'Event').slice(0, 12),
-      impact: ev.importance || ev.impact,
-    }));
+    return calendarEvents.filter((ev) => ev?.label || ev?.event_name || ev?.event);
   }, [showCalendarEvents, calendarEvents]);
+
+  const levelLines = useMemo(() => {
+    if (!showTargets) return [];
+    const raw = [
+      {
+        id: 'target',
+        y: priceToYPercent(range.resistance, range.min, range.max),
+        type: 'target',
+        label: `Target Level: $${Number(range.resistance).toFixed(2)}`,
+      },
+      {
+        id: 'pullback',
+        y: priceToYPercent(range.support, range.min, range.max),
+        type: 'pullback',
+        label: `Pullback Area: $${Number(range.support).toFixed(2)}`,
+      },
+      {
+        id: 'live',
+        y: priceToYPercent(range.price, range.min, range.max),
+        type: 'live',
+        label: Number(range.price).toFixed(2),
+      },
+    ];
+    return distributeLevelLines(raw, 8);
+  }, [showTargets, range]);
 
   const clearHoverSoon = () => {
     clearTimeout(hoverTimer.current);
     hoverTimer.current = setTimeout(() => {
       setHoverId(null);
       setHoverLevel(null);
-    }, 160);
+    }, 180);
   };
 
   const keepHover = () => clearTimeout(hoverTimer.current);
@@ -163,21 +134,27 @@ const MrktChartOverlays = ({
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  const supportY = priceY(range.support, range.min, range.max);
-  const targetY = priceY(range.resistance, range.min, range.max);
-  const liveY = priceY(range.price, range.min, range.max);
+  const targetLine = levelLines.find((l) => l.id === 'target');
+  const supportLine = levelLines.find((l) => l.id === 'pullback');
+  const liveLine = levelLines.find((l) => l.id === 'live');
+  const targetY = targetLine?.y ?? 50;
+  const supportY = supportLine?.y ?? 50;
+  const liveY = liveLine?.y ?? 50;
   const pullbackBandTop = Math.min(supportY, targetY);
   const pullbackBandBottom = Math.max(supportY, targetY);
 
-  const calloutId = hoverId || pinnedId;
-  const calloutMarker = markers.find((m) => m.id === calloutId);
+  const activeLabelId = hoverId || pinnedId;
 
   const handleMarkerClick = (marker, e) => {
     e.stopPropagation();
     setPinnedId(marker.id);
     const payload = marker.item || marker;
     onMarkerSelect?.(payload);
-    onCandleOpen?.(payload?.title ? payload : buildSessionHeadline());
+    onCandleOpen?.(
+      payload?.title
+        ? { ...payload, bar: marker.bar || payload.bar }
+        : buildSessionHeadline(),
+    );
   };
 
   const buildSessionHeadline = () => ({
@@ -189,7 +166,8 @@ const MrktChartOverlays = ({
 
   const openSessionAnalysis = (e) => {
     e?.stopPropagation();
-    const payload = calloutMarker?.item || buildSessionHeadline();
+    const activeMarker = markers.find((m) => m.id === activeLabelId);
+    const payload = activeMarker?.item || buildSessionHeadline();
     onCandleOpen?.(payload);
   };
 
@@ -205,6 +183,7 @@ const MrktChartOverlays = ({
           newsPool={newsPool}
           isLiveTape={isLiveTape}
           onCandleOpen={onCandleOpen}
+          suppressHover={showLabels}
         />
       )}
 
@@ -214,7 +193,7 @@ const MrktChartOverlays = ({
           className="mrkt-chart-tap-layer"
           aria-label="Open candle analysis for this chart"
           onClick={(e) => {
-            if (e.target.closest('.mrkt-chart-marker, .mrkt-brain-prompt, .mrkt-chart-callout')) return;
+            if (e.target.closest('.mrkt-chart-marker, .mrkt-brain-prompt, .mrkt-news-label__float')) return;
             e.stopPropagation();
             onChartTap(buildSessionHeadline());
           }}
@@ -234,12 +213,12 @@ const MrktChartOverlays = ({
         chartEvents.map((ev) => (
           <div
             key={ev.id}
-            className="mrkt-chart-cal-marker"
-            style={{ left: `${ev.left}%` }}
+            className="mrkt-chart-outside-label mrkt-chart-outside-label--calendar"
+            style={{ top: `${ev.top}%`, left: `${ev.left}%` }}
             title={ev.label}
           >
-            <span className="mrkt-chart-cal-marker__line" aria-hidden />
-            <span className="mrkt-chart-cal-marker__pill">{ev.label}</span>
+            <span className="mrkt-chart-outside-label__pill">{ev.label}</span>
+            <span className="mrkt-chart-outside-label__tick" aria-hidden />
           </div>
         ))}
 
@@ -260,8 +239,10 @@ const MrktChartOverlays = ({
             }}
             onMouseLeave={clearHoverSoon}
           >
-            <span className="mrkt-level-line__label mrkt-level-line__label--target">
-              Target Level: ${Number(range.resistance).toFixed(2)}
+            <span
+              className={`mrkt-level-line__label mrkt-level-line__label--target mrkt-level-line__label--${targetLine?.labelSide || 'right'}`}
+            >
+              {targetLine?.label}
             </span>
           </div>
           <div
@@ -277,8 +258,10 @@ const MrktChartOverlays = ({
             className="mrkt-level-line mrkt-level-line--live"
             style={{ top: `${liveY}%` }}
           >
-            <span className="mrkt-level-line__label mrkt-level-line__label--live">
-              {Number(range.price).toFixed(2)}
+            <span
+              className={`mrkt-level-line__label mrkt-level-line__label--live mrkt-level-line__label--${liveLine?.labelSide || 'right'}`}
+            >
+              {liveLine?.label}
             </span>
           </div>
           <BrainHoverPrompt
@@ -296,54 +279,22 @@ const MrktChartOverlays = ({
 
       {showLabels && (
         <>
-          <div className="mrkt-chart-markers" onMouseLeave={clearHoverSoon}>
-            {markers.map((m) => {
-              const isHover = hoverId === m.id;
-              const isPinned = pinnedId === m.id;
-              const showBrain = isHover || isPinned;
-              return (
-                <React.Fragment key={m.id}>
-                  <BrainHoverPrompt
-                    visible={showBrain}
-                    style={{
-                      top: `${Math.max(m.top - 8, 6)}%`,
-                      left: `${Math.max(m.left - 18, 4)}%`,
-                    }}
-                    onClick={() => onCandleOpen?.(m.item || buildSessionHeadline())}
-                  />
-                  <button
-                    type="button"
-                    className={`mrkt-chart-marker mrkt-chart-marker--${m.variant} ${
-                      isHover || isPinned ? 'mrkt-chart-marker--hover' : ''
-                    } ${isPinned ? 'mrkt-chart-marker--active' : ''}`}
-                    style={{ left: `${m.left}%`, top: `${m.top}%` }}
-                    onMouseEnter={() => enterMarker(m)}
-                    onMouseLeave={clearHoverSoon}
-                    onClick={(e) => handleMarkerClick(m, e)}
-                    aria-label={
-                      m.item?.title
-                        ? `Headline: ${m.item.title}. Hover for brain prompt, click for analysis.`
-                        : 'Show analysis at this price point'
-                    }
-                    aria-expanded={Boolean(calloutId === m.id)}
-                  />
-                </React.Fragment>
-              );
-            })}
+          <div className="mrkt-chart-markers mrkt-chart-markers--news" onMouseLeave={clearHoverSoon}>
+            {markers.map((m) => (
+              <MrktChartNewsLabel
+                key={m.id}
+                marker={m}
+                active={activeLabelId === m.id}
+                onEnter={() => enterMarker(m)}
+                onLeave={clearHoverSoon}
+                onClick={(e) => handleMarkerClick(m, e)}
+              />
+            ))}
           </div>
-
-          {calloutMarker && (
-            <MarkerCallout
-              marker={calloutMarker}
-              onOpenAnalysis={onCandleOpen}
-              onKeepOpen={keepHover}
-              onClose={clearHoverSoon}
-            />
-          )}
 
           {markers.length === 0 && (
             <div className="mrkt-chart-labels-hint">
-              <span>Zoom in to show labels — or click chart for session analysis</span>
+              <span>Syncing headlines — hover purple dots when they appear on candles</span>
             </div>
           )}
         </>

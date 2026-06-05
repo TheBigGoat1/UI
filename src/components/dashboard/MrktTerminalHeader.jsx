@@ -1,10 +1,6 @@
 import React from 'react';
-import {
-  formatPrice,
-  formatChangeAbs,
-  formatChangePercent,
-} from '../../utils/displayFormat.js';
 import { formatTfLabel } from '../../utils/timeframeStack.js';
+import { formatPrice } from '../../utils/displayFormat.js';
 
 function trendToSentiment(trend) {
   if (!trend) return { label: 'Neutral', tone: 'neutral' };
@@ -45,62 +41,83 @@ function SentimentPill({ mode, trend, tfLabel }) {
   );
 }
 
+function TapeTag({ tapeState, priceSource, isLive }) {
+  if (tapeState === 'live' || (isLive && priceSource === 'tradingview')) {
+    return (
+      <span
+        className="mrkt-terminal__live-tag mrkt-terminal__live-tag--on"
+        title="TradingView scanner — same ticker as chart"
+      >
+        LIVE
+      </span>
+    );
+  }
+  if (tapeState === 'syncing') {
+    return (
+      <span className="mrkt-terminal__live-tag mrkt-terminal__live-tag--syncing" title="Syncing desk tape with chart">
+        SYNCING
+      </span>
+    );
+  }
+  return (
+    <span className="mrkt-terminal__live-tag" title={priceSource || 'awaiting tape'}>
+      MODEL
+    </span>
+  );
+}
+
 const MrktTerminalHeader = ({
   headline,
+  symbol,
   price,
   changeAbs,
   changePercent,
+  isLive = false,
+  tapeState = 'syncing',
+  priceSource,
   swingTrend,
   dayTrend,
-  symbol = '',
   chartInterval = '1h',
   chartPeriod = '1W',
   timeframe,
-  isLive = true,
-  hideTopPrice = false,
-  topPriceReason = 'Price displayed on chart axis',
 }) => {
-  const isUp = Number(changePercent) >= 0;
-  const isDown = Number(changePercent) < 0;
-  const pctVal = changePercent != null ? Number(changePercent) : null;
-  const absVal = changeAbs != null ? Math.abs(Number(changeAbs)) : null;
-
-  const changeLine =
-    absVal != null && pctVal != null
-      ? `${isDown ? '▼ ' : isUp ? '▲ ' : ''}${isDown ? '-' : isUp ? '+' : ''}${formatChangeAbs(absVal, symbol)} ${formatChangePercent(pctVal)}`
-      : pctVal != null
-        ? formatChangePercent(pctVal)
-        : formatChangePercent(0);
-
   const htfLabel = timeframe?.htfLabel || `${formatTfLabel(chartInterval === '1h' ? '4h' : chartInterval)} · ${chartPeriod}`;
   const ltfLabel = timeframe?.chartLabel || `${formatTfLabel(chartInterval)} · ${chartPeriod}`;
+
+  const ch = Number(changePercent);
+  const abs = Number(changeAbs);
+  const up = Number.isFinite(ch) ? ch >= 0 : true;
+  const hasPrice = Number.isFinite(Number(price)) && Number(price) > 0;
 
   return (
     <header className="mrkt-terminal__header">
       <h1 className="mrkt-terminal__headline">{headline}</h1>
-
-      <div className="mrkt-terminal__price-block">
-        {hideTopPrice ? (
-          <span className="mrkt-terminal__change">{topPriceReason}</span>
-        ) : (
-          <>
-            <span className="mrkt-terminal__price">{formatPrice(price, symbol)}</span>
-            <span
-              className={`mrkt-terminal__change ${
-                isUp ? 'mrkt-terminal__change--up' : 'mrkt-terminal__change--down'
-              }`}
-            >
-              {changeLine}
+      <div className="mrkt-terminal__header-right">
+        <div className="mrkt-terminal__price-block">
+          {hasPrice ? (
+            <>
+              <span className={`mrkt-terminal__price ${up ? 'mrkt-terminal__price--up' : 'mrkt-terminal__price--down'}`}>
+                {formatPrice(price, symbol)}
+              </span>
+              {Number.isFinite(abs) && Number.isFinite(ch) && (
+                <span className={`mrkt-terminal__change ${up ? 'mrkt-terminal__change--up' : 'mrkt-terminal__change--down'}`}>
+                  {abs >= 0 ? '+' : ''}
+                  {abs.toFixed(2)} / {ch >= 0 ? '+' : ''}
+                  {ch.toFixed(2)}%
+                </span>
+              )}
+            </>
+          ) : (
+            <span className="mrkt-terminal__price mrkt-terminal__price--syncing" role="status">
+              Syncing tape…
             </span>
-          </>
-        )}
-        <span className={`mrkt-terminal__live-tag ${isLive ? 'mrkt-terminal__live-tag--on' : ''}`}>
-          {isLive ? 'LIVE' : 'MODEL'}
-        </span>
-      </div>
-      <div className="mrkt-terminal__sentiment-row">
-        <SentimentPill mode="SWING TRADING" trend={swingTrend} tfLabel={htfLabel} />
-        <SentimentPill mode="DAY TRADING" trend={dayTrend} tfLabel={ltfLabel} />
+          )}
+          <TapeTag tapeState={tapeState} priceSource={priceSource} isLive={isLive} />
+        </div>
+        <div className="mrkt-terminal__sentiment-row">
+          <SentimentPill mode="SWING TRADING" trend={swingTrend} tfLabel={htfLabel} />
+          <SentimentPill mode="DAY TRADING" trend={dayTrend} tfLabel={ltfLabel} />
+        </div>
       </div>
     </header>
   );

@@ -1,0 +1,358 @@
+/* Backtest page — Fundamentals + Strategy Lab */
+
+.bt-page {
+  max-width: none;
+}
+
+.bt-page--fundamentals {
+  padding-bottom: 0;
+}
+
+.bt-page__tabs {
+  display: inline-flex;
+  gap: 0.35rem;
+  padding: 0.25rem;
+  margin-bottom: 1.25rem;
+  border-radius: 0.65rem;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.bt-page__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.55rem 1rem;
+  border-radius: 0.5rem;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.55);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: color 0.15s, background 0.15s;
+}
+
+.bt-page__tab:hover {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+.bt-page__tab.is-active {
+  color: #22d3ee;
+  background: rgba(34, 211, 238, 0.1);
+  box-shadow: inset 0 0 0 1px rgba(34, 211, 238, 0.25);
+}
+
+/* —— Fundamentals layout —— */
+
+.bt-fundamentals {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: calc(100vh - 10rem);
+}
+
+.bt-fundamentals__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.bt-fundamentals__title {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #fff;
+  letter-spacing: -0.02em;
+}
+
+.bt-fundamentals__subtitle {
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.bt-fundamentals__workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(320px, 0.85fr);
+  gap: 1rem;
+  flex: 1;
+  min-height: 0;
+}
+
+@media (max-width: 1100px) {
+  .bt-fundamentals__workspace {
+    grid-template-columns: 1fr;
+  }
+}
+
+.bt-fundamentals__chart-col {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.bt-fundamentals__toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.85rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.bt-fundamentals__tf-group {
+  display: inline-flex;
+  gap: 0.25rem;
+}
+
+.bt-fundamentals__tf-btn {
+  padding: 0.35rem 0.75rem;
+  border-radius: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.5);
+  background: transparent;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.bt-fundamentals__tf-btn.is-active {
+  color: #22d3ee;
+  background: rgba(34, 211, 238, 0.08);
+  border-color: rgba(34, 211, 238, 0.3);
+}
+
+.bt-fundamentals__dates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.bt-fundamentals__date-input {
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.4rem;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.85);
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.bt-fundamentals__date-sep {
+  color: rgba(255, 255, 255, 0.35);
+  font-size: 0.75rem;
+}
+
+.bt-fundamentals__date-label {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.4);
+  margin-left: 0.25rem;
+}
+
+.bt-fundamentals__chart-stage {
+  position: relative;
+  flex: 1;
+  min-height: 420px;
+}
+
+.bt-fundamentals__chart-stage .trade-chart-shell {
+  height: 100%;
+  min-height: 420px;
+}
+
+.bt-fundamentals__hint {
+  padding: 0.5rem 0.85rem 0.65rem;
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.38);
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.bt-fundamentals__data-badge {
+  position: absolute;
+  left: 0.75rem;
+  bottom: 0.75rem;
+  z-index: 12;
+  padding: 0.35rem 0.55rem;
+  border-radius: 0.35rem;
+  font-size: 0.65rem;
+  color: rgba(255, 255, 255, 0.65);
+  background: rgba(0, 0, 0, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* Chart selection overlay */
+
+.bt-fundamentals-chart-interaction {
+  position: absolute;
+  inset: 0;
+  z-index: 15;
+  pointer-events: none;
+}
+
+.bt-fundamentals-chart-interaction__layer {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  pointer-events: auto;
+  background: transparent;
+}
+
+.bt-fundamentals-chart-interaction__band {
+  position: absolute;
+  top: 6%;
+  bottom: 14%;
+  transform: translateX(-50%);
+  background: rgba(34, 211, 238, 0.12);
+  border-left: 1px solid rgba(34, 211, 238, 0.35);
+  border-right: 1px solid rgba(34, 211, 238, 0.35);
+  box-shadow: inset 0 0 24px rgba(34, 211, 238, 0.08);
+  pointer-events: none;
+}
+
+.bt-fundamentals-chart-interaction__pill {
+  position: absolute;
+  top: 0.65rem;
+  transform: translateX(-50%);
+  max-width: min(280px, 70vw);
+  padding: 0.3rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.68rem;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #22d3ee;
+  background: rgba(34, 211, 238, 0.12);
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  pointer-events: none;
+}
+
+/* Right analysis panel */
+
+.bt-fundamentals__panel-col {
+  min-height: 420px;
+  max-height: calc(100vh - 8rem);
+  overflow: hidden;
+}
+
+.bt-fundamentals-panel {
+  height: 100%;
+  overflow-y: auto;
+  padding: 1rem 1.1rem 1.5rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.bt-fundamentals-panel--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 320px;
+  text-align: center;
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.45);
+  padding: 2rem;
+}
+
+.bt-fundamentals-panel__head {
+  margin-bottom: 0.85rem;
+}
+
+.bt-fundamentals-panel__window {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #22d3ee;
+  letter-spacing: 0.02em;
+}
+
+.bt-fundamentals-panel__enhancing {
+  margin-top: 0.35rem;
+  font-size: 0.68rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.bt-fundamentals-panel__error {
+  color: #f87171;
+  font-size: 0.8125rem;
+}
+
+.bt-fundamentals-panel__narrative {
+  margin-bottom: 1rem;
+}
+
+.bt-fundamentals-panel__summary {
+  font-size: 0.875rem;
+  line-height: 1.55;
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.bt-fundamentals-panel__drill {
+  margin-bottom: 1.25rem;
+}
+
+.bt-fundamentals-panel__drill-inner {
+  position: relative;
+  border-radius: 0.55rem;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.bt-fundamentals-panel__drill-watermark {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 4.5rem;
+  font-weight: 900;
+  color: rgba(255, 255, 255, 0.04);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.bt-fundamentals-panel__drill-markers {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  bottom: 0.35rem;
+  display: flex;
+  justify-content: space-between;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.bt-fundamentals-panel__drill-marker {
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #22d3ee;
+  padding-top: 0.15rem;
+  border-top: 2px solid #22d3ee;
+}
+
+.bt-fundamentals-panel__drill-marker--start {
+  transform: translateX(-50%);
+}
+
+.bt-fundamentals-panel__drill-marker--end {
+  transform: translateX(50%);
+}
+
+.bt-fundamentals-panel .mrkt-candle-section__title {
+  color: #22d3ee;
+}
+
+.bt-fundamentals-panel .mrkt-candle-hot-label {
+  color: #fb923c;
+}

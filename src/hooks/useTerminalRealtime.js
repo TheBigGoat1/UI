@@ -1,15 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api } from '../services/api/api.js';
-import { subscribeSocket, getSocket } from '../services/realtime/socket.js';
+import { subscribeSocket, subscribeConnectStatus, getSocket } from '../services/realtime/socket.js';
 import { applyDeskPriceAliases } from '../utils/deskSymbols.js';
 import { userMessageFromError } from '../utils/apiError.js';
+import { shouldApplyTapeUpdate } from '../utils/sovereignQuote.js';
 
 const PRICE_POLL_MS = 800;
-const TURBO_QUOTE_MS = 300;
-const NEWS_POLL_MS = 8000;
+const TURBO_QUOTE_MS = 250;
+const NEWS_POLL_MS = 3000;
 
 /**
  * Modular realtime layer for the home terminal — prices, news, connection status, errors.
+ * Active symbol: turbo TV quote wins; synthetic never overwrites header tape.
  */
 export function useTerminalRealtime(selectedAsset) {
   const [assetsList, setAssetsList] = useState([]);
@@ -23,10 +25,38 @@ export function useTerminalRealtime(selectedAsset) {
   const [lastNewsSync, setLastNewsSync] = useState(null);
   const [priceSource, setPriceSource] = useState('init');
   const newsBusyRef = useRef(false);
+  const activeAssetRef = useRef(selectedAsset);
+
+  useEffect(() => {
+    activeAssetRef.current = selectedAsset;
+  }, [selectedAsset]);
 
   const applyPrices = useCallback((data, source = 'rest') => {
     if (!data || !Object.keys(data).length) return false;
-    setPrices((prev) => applyDeskPriceAliases({ ...prev, ...data }));
+    const activeSymbol = activeAssetRef.current;
+    setPrices((prev) => {
+      const merged = { ...prev };
+      for (const [sym, row] of Object.entries(data)) {
+        if (!row?.price) continue;
+        const existing = merged[sym];
+        if (
+          shouldApplyTapeUpdate({
+            symbol: sym,
+            activeSymbol,
+            existing,
+            incoming: row,
+            channel: source,
+          })
+        ) {
+          merged[sym] = {
+            ...row,
+            source: row.source || (source === 'turbo' ? 'tradingview' : row.source),
+            _channel: source,
+          };
+        }
+      }
+      return applyDeskPriceAliases(merged);
+    });
     setLastPriceSync(Date.now());
     setPriceSource(source);
     setFetchError(null);
@@ -57,17 +87,33 @@ export function useTerminalRealtime(selectedAsset) {
     newsBusyRef.current = true;
     setNewsLoading(true);
     try {
-      let rows = [];
-      const res = await api.news.getByAssetPath(selectedAsset, { page: 1, limit: 40 });
-      rows = res?.data || [];
-      if (!rows.length) {
-        const all = await api.news.getAll({ page: 1, limit: 40 });
-        rows = all?.data || [];
+      const mergeByUrl = (lists) => {
+        const map = new Map();
+        for (const list of lists) {
+          for (const row of list || []) {
+            const key = row?.url || row?.title;
+            if (key && !map.has(key)) map.set(key, row);
+          }
+        }
+        return Array.from(map.values()).sort(
+          (a, b) =>
+            new Date(b.publishedAt || b.time || 0).getTime() -
+            new Date(a.publishedAt || a.time || 0).getTime(),
+        );
+      };
+
+      const assetRes = await api.news.getByAssetPath(selectedAsset, {
+        page: 1,
+        limit: 40,
+        fresh: 1,
+      });
+      let rows = assetRes?.data || [];
+
+      if (rows.length < 8) {
+        const live = await api.news.getFeed(30);
+        rows = mergeByUrl([rows, live?.data || []]);
       }
-      if (!rows.length) {
-        const live = await api.news.getFeed(24);
-        rows = live?.data || [];
-      }
+
       setHeadlineNews(Array.isArray(rows) ? rows : []);
       setLastNewsSync(Date.now());
       setNewsError(null);
@@ -93,8 +139,7 @@ export function useTerminalRealtime(selectedAsset) {
     const socket = getSocket();
     const onConnect = () => setSocketLive(true);
     const onDisconnect = () => setSocketLive(false);
-    socket.on('connect', onConnect);
-    socket.on('disconnect', onDisconnect);
+    const offStatus = subscribeConnectStatus(onConnect, onDisconnect);
     setSocketLive(socket.connected);
 
     const offPrices = subscribeSocket('market:prices', (payload) => {
@@ -104,12 +149,11 @@ export function useTerminalRealtime(selectedAsset) {
     return () => {
       clearInterval(interval);
       offPrices();
-      socket.off('connect', onConnect);
-      socket.off('disconnect', onDisconnect);
+      offStatus();
     };
   }, [loadMarketData, applyPrices]);
 
-  /** Turbo quote for active chart symbol — freshest header/chart price. */
+  /** Turbo quote for active chart symbol — TV scanner, same ticker as chart embed. */
   useEffect(() => {
     if (!selectedAsset) return undefined;
     let active = true;
@@ -120,7 +164,7 @@ export function useTerminalRealtime(selectedAsset) {
         if (!active || !res?.success || !res.data?.price) return;
         applyPrices({ [selectedAsset]: res.data }, 'turbo');
       } catch {
-        /* bulk poll covers fallback */
+        /* bulk poll must not downgrade active symbol */
       }
     };
 

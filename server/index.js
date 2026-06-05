@@ -30,6 +30,7 @@ import deskRoutes from "./routes/desk.js";
 import { initRealtime } from "./realtime/hub.js";
 import { attachCorrelationId, requestLogger } from "./middleware/observability.js";
 import { ensureMacroDataReady } from "./services/macroBootstrap.js";
+import { refreshNewsWire } from "./routes/news.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 logEnvBoot();
@@ -170,4 +171,16 @@ function listenOnPort(port) {
     if (r?.synced) console.log(`[macro] Economy intelligence ready (${r.synced} events synced)`);
     else if (r?.total) console.log(`[macro] Economy intelligence ready (${r.total} events in window)`);
   });
+
+  const NEWS_SYNC_MS = 3 * 60 * 1000;
+  const runNewsSync = async () => {
+    try {
+      const rows = await refreshNewsWire(40);
+      if (rows?.length) console.log(`[news] Wire sync — ${rows.length} headlines refreshed`);
+    } catch (err) {
+      console.warn("[news] Background sync:", err.message);
+    }
+  };
+  runNewsSync();
+  setInterval(runNewsSync, NEWS_SYNC_MS);
 })();

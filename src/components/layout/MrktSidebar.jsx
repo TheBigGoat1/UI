@@ -24,7 +24,7 @@ const MrktSidebar = ({ user, onLogout }) => {
       <div className="dash-sidebar__head">
         <Link
           to="/dashboard"
-          className="dash-sidebar__brand flex items-center gap-2 min-w-0 outline-none focus-visible:ring-2 focus-visible:ring-[#8b5cf6]/40 rounded-lg"
+          className="dash-sidebar__brand flex items-center gap-2 min-w-0 outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent,#22d3ee)]/40 rounded-lg"
           title="Home"
         >
           <BrandLogo size="sm" showText={false} />
@@ -46,7 +46,7 @@ const MrktSidebar = ({ user, onLogout }) => {
                   title={item.name}
                   className={`nav-item ${active ? 'nav-item-active' : 'text-text-muted'}`}
                 >
-                  <item.icon size={20} className={`shrink-0 ${active ? 'text-[#8b5cf6]' : ''}`} />
+                  <item.icon size={20} className={`shrink-0 ${active ? 'text-[var(--accent,#22d3ee)]' : ''}`} />
                   <span className="nav-item__label">
                     {item.name}
                     {locked && <span className="mrkt-nav-pro-tag">Pro</span>}
@@ -77,7 +77,7 @@ const MrktSidebar = ({ user, onLogout }) => {
               title={item.name}
               className={`nav-item ${active ? 'nav-item-active' : 'text-text-muted'}`}
             >
-              <item.icon size={20} className={`shrink-0 ${active ? 'text-[#8b5cf6]' : ''}`} />
+              <item.icon size={20} className={`shrink-0 ${active ? 'text-[var(--accent,#22d3ee)]' : ''}`} />
               <span className="nav-item__label">{item.name}</span>
             </Link>
           );

@@ -2,6 +2,13 @@
  * Chart candle intelligence — factual hover reads from OHLC + wire headlines only.
  */
 import { formatNewsTime } from './newsAssets.js';
+import {
+  computeChartPriceRange,
+  priceToYPercent,
+  distributeChartMarkers,
+  distributeFallbackPositions,
+  distributeNewsLabelFloats,
+} from './chartLayout.js';
 
 const INTERVAL_SEC = {
   '1m': 60,
@@ -195,13 +202,31 @@ export function barIndexFromX(xPct, barCount) {
   return Math.min(Math.max(0, idx), barCount - 1);
 }
 
-export function mapNewsToChartAnnotations(newsPool = [], bars = [], interval = '1h', symbol = '') {
+export function tradingSessionForDate(d) {
+  const h = d.getUTCHours();
+  if (h >= 13 && h < 21) return 'London / NY';
+  if (h >= 7 && h < 16) return 'London';
+  return 'Asia';
+}
+
+/** MRKT label meta — "Jun 4 - 2:00 PM - London" */
+export function formatChartLabelMeta(timestamp) {
+  const d = new Date(timestamp);
+  if (Number.isNaN(d.getTime())) return '';
+  const datePart = d.toLocaleString(undefined, { month: 'short', day: 'numeric' });
+  const timePart = d.toLocaleString(undefined, { hour: 'numeric', minute: '2-digit' });
+  return `${datePart} - ${timePart} - ${tradingSessionForDate(d)}`;
+}
+
+export function mapNewsToChartAnnotations(newsPool = [], bars = [], interval = '1h', _symbol = '') {
   if (!bars.length || !newsPool.length) return [];
 
   const layout = computeBarLayout(bars);
   if (!layout) return [];
 
+  const range = computeChartPriceRange(bars);
   const used = new Set();
+  const barUsage = new Map();
   const out = [];
 
   for (const item of newsPool) {
@@ -223,33 +248,96 @@ export function mapNewsToChartAnnotations(newsPool = [], bars = [], interval = '
 
     const col = layout.columns[bestIdx];
     const key = item.title;
-    if (used.has(key)) continue;
+    if (!key || used.has(key)) continue;
     used.add(key);
 
-    const d = new Date(t);
-    const sub = d.toLocaleString(undefined, {
-      month: 'short',
-      day: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit',
-    });
+    const bar = col.bar;
+    const slot = barUsage.get(bestIdx) || 0;
+    barUsage.set(bestIdx, slot + 1);
 
-    const session =
-      d.getUTCHours() >= 13 && d.getUTCHours() < 21 ? 'London / NY' : d.getUTCHours() >= 7 ? 'London' : 'Asia';
+    const bullish = Number(bar.close) >= Number(bar.open);
+    const side = bullish ? 'above' : 'below';
+    const anchorX = Math.min(90, Math.max(10, col.leftPct + slot * 1.5));
+    const anchorY = priceToYPercent(
+      bullish ? bar.high : bar.low,
+      range.min,
+      range.max,
+    );
+    const labelX = Math.min(86, Math.max(14, anchorX + (side === 'above' ? 10 : 8)));
+    const labelY =
+      side === 'above'
+        ? Math.max(8, anchorY - 16 - slot * 9)
+        : Math.min(90, anchorY + 16 + slot * 9);
 
     out.push({
       id: `news-${bestIdx}-${key.slice(0, 16)}`,
-      left: col.leftPct,
-      top: col.topPct,
-      text: item.title?.length > 120 ? `${item.title.slice(0, 117)}…` : item.title,
-      sub: `${sub} · ${session} — ${symbol} move on headline`,
+      anchorX,
+      anchorY,
+      labelX,
+      labelY,
+      side,
+      left: anchorX,
+      top: anchorY,
+      text: item.title?.length > 140 ? `${item.title.slice(0, 137)}…` : item.title,
+      sub: formatChartLabelMeta(t),
       item,
-      bar: col.bar,
+      bar,
     });
   }
 
-  return out.slice(0, 8);
+  return distributeNewsLabelFloats(out.slice(0, 8), 11);
 }
+
+export function mapCalendarToChartAnnotations(events = [], bars = [], interval = '1h') {
+  if (!bars.length || !events.length) return [];
+
+  const layout = computeBarLayout(bars);
+  if (!layout) return [];
+
+  const step = intervalStepSec(interval) * 1000;
+  const windowStart = bars[0].time * 1000;
+  const windowEnd = bars[bars.length - 1].time * 1000 + step;
+
+  const inWindow = (events || [])
+    .filter((ev) => {
+      const t = new Date(ev.event_time || ev.time).getTime();
+      return Number.isFinite(t) && t >= windowStart && t <= windowEnd;
+    })
+    .sort((a, b) => new Date(a.event_time) - new Date(b.event_time));
+
+  const out = [];
+  for (const ev of inWindow) {
+    const t = new Date(ev.event_time || ev.time).getTime();
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    layout.columns.forEach((col, i) => {
+      const dist = Math.abs(col.bar.time * 1000 - t);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestIdx = i;
+      }
+    });
+    if (bestDist > step * 3) continue;
+
+    const col = layout.columns[bestIdx];
+    const name = (ev.event_name || ev.event || 'Event').trim();
+    if (!name) continue;
+
+    out.push({
+      id: ev.id || `cal-${bestIdx}-${name.slice(0, 10)}`,
+      left: col.leftPct,
+      top: Math.max(10, col.topPct - 12),
+      label: name.length > 20 ? `${name.slice(0, 17)}…` : name,
+      impact: ev.importance || ev.impact,
+      event: ev,
+      kind: 'calendar',
+    });
+  }
+
+  return distributeChartMarkers(out.slice(0, 8), 7);
+}
+
+export { distributeFallbackPositions } from './chartLayout.js';
 
 export function headlineFromCandleRead(read, symbol) {
   if (read?.primaryHeadline?.title) {

@@ -89,6 +89,7 @@ export async function analyzeCandleMoment({
   headline = {},
   marketContext = null,
   relatedNewsPool = [],
+  clickedBar = null,
 }) {
   const title = headline.title || headline.text || "";
   const summary = headline.summary || headline.description || "";
@@ -99,6 +100,14 @@ export async function analyzeCandleMoment({
     getEventsNearTime(symbol, publishedAt, 72),
     getHistory(symbol, "1m", "1D").catch(() => null),
   ]);
+
+  const isSynthetic =
+    Boolean(historyRes?.synthetic) ||
+    marketContext?.data_quality === "model" ||
+    marketContext?.is_live_tape === false;
+  const hasWireHeadline =
+    Boolean(title) &&
+    !["chart_tap", "chart_session", "candle_session"].includes(String(headline.source || ""));
 
   const relatedNews = rankRelatedNews(
     { title, ...headline },
@@ -140,6 +149,17 @@ export async function analyzeCandleMoment({
   const bars = historyRes?.bars || [];
   const chartBars = bars.slice(-120);
 
+  const barContext = clickedBar
+    ? {
+        time: clickedBar.time,
+        open: clickedBar.open,
+        high: clickedBar.high,
+        low: clickedBar.low,
+        close: clickedBar.close,
+        interval: clickedBar.interval || marketContext?.interval || "1h",
+      }
+    : null;
+
   const factualBullets = events.slice(0, 4).map((ev) => {
     const parts = [ev.event_name];
     if (ev.actual != null) parts.push(`Actual: ${ev.actual}`);
@@ -147,7 +167,7 @@ export async function analyzeCandleMoment({
     return parts.join(" — ");
   });
 
-  if (!hasAnthropicKey() || !title) {
+  if (!hasAnthropicKey() || !title || (isSynthetic && !hasWireHeadline)) {
     return {
       symbol,
       publishedAt,
@@ -164,8 +184,11 @@ export async function analyzeCandleMoment({
       relatedNews,
       relatedEvents: events,
       chart: { interval: "1m", bars: chartBars, synthetic: Boolean(historyRes?.synthetic) },
-      provider: "factual",
+      provider: isSynthetic ? "factual_model" : "factual",
+      aiEnabled: hasAnthropicKey(),
+      data_quality: isSynthetic ? "model" : "live",
       market_snapshot: snapshot,
+      bar_context: barContext,
     };
   }
 
@@ -182,12 +205,17 @@ Return ONLY valid JSON:
   },
   "technicals": "One paragraph on how price reacted and what structure/levels matter on the desk symbol"
 }
-Ground in the headline, summary, live quotes, calendar events, and technical context. Never invent headlines or prices.`;
+Ground in the headline, summary, live quotes, calendar events, and technical context. Never invent headlines or prices.
+If DATA_QUALITY is "model", qualify statements and never present model bars as confirmed live prints.`;
 
   const user = `Symbol: ${symbol}
+DATA_QUALITY: ${isSynthetic ? "model" : "live"}
 Headline time: ${publishedAt || "recent session"}
 HEADLINE: ${title}
 SUMMARY: ${summary || "n/a"}
+
+CLICKED BAR (OHLC):
+${JSON.stringify(barContext || "not provided", null, 2)}
 
 TECHNICAL CONTEXT:
 ${JSON.stringify(marketContext || {}, null, 2)}
@@ -220,7 +248,9 @@ ${JSON.stringify(relatedNews.map((n) => n.title), null, 2)}`;
         relatedEvents: events,
         chart: { interval: "1m", bars: chartBars, synthetic: Boolean(historyRes?.synthetic) },
         provider: "anthropic",
+        data_quality: isSynthetic ? "model" : "live",
         market_snapshot: snapshot,
+        bar_context: barContext,
       };
     }
     const prose = String(raw).trim();
@@ -234,7 +264,10 @@ ${JSON.stringify(relatedNews.map((n) => n.title), null, 2)}`;
       relatedEvents: events,
       chart: { interval: "1m", bars: chartBars, synthetic: Boolean(historyRes?.synthetic) },
       provider: "anthropic",
+      aiEnabled: true,
+      data_quality: isSynthetic ? "model" : "live",
       market_snapshot: snapshot,
+      bar_context: barContext,
     };
   } catch (err) {
     return {
@@ -247,7 +280,9 @@ ${JSON.stringify(relatedNews.map((n) => n.title), null, 2)}`;
       relatedEvents: events,
       chart: { interval: "1m", bars: chartBars, synthetic: Boolean(historyRes?.synthetic) },
       provider: "error",
+      data_quality: isSynthetic ? "model" : "live",
       market_snapshot: snapshot,
+      bar_context: barContext,
     };
   }
 }

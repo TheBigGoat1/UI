@@ -26,7 +26,7 @@ const Connections = lazy(() => import('./pages/Connections'));
 const Admin = lazy(() => import('./pages/Admin'));
 const AdminLogin = lazy(() => import('./pages/AdminLogin'));
 const AdminUnauthorized = lazy(() => import('./pages/AdminUnauthorized'));
-const Economy = lazy(() => import('./pages/Economy'));
+const Economy = lazy(() => import('./pages/GlobalEconomy'));
 const Terms = lazy(() => import('./pages/legal/Terms'));
 const Privacy = lazy(() => import('./pages/legal/Privacy'));
 const Cookies = lazy(() => import('./pages/legal/Cookies'));
@@ -128,6 +128,7 @@ function AppRoutes() {
             <Route path="calendar" element={<LazyPage title="Calendar error"><Calendar /></LazyPage>} />
             <Route path="news" element={<LazyPage title="News error"><News /></LazyPage>} />
             <Route path="economy" element={<LazyPage title="Economy error"><Economy /></LazyPage>} />
+            <Route path="global-economy" element={<Navigate to="/dashboard/economy" replace />} />
             <Route path="settings" element={<LazyPage title="Settings error"><Settings /></LazyPage>} />
             <Route path="help" element={<Navigate to="/dashboard/settings?tab=guide" replace />} />
             <Route

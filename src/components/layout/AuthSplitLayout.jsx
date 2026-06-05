@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { ArrowLeft, Shield, Sparkles, Clock } from 'lucide-react';
 import BrandLogo from '../brand/BrandLogo';
 import AuthBackdrop from '../visual/AuthBackdrop';
+import ApiStatusBar from './ApiStatusBar.jsx';
 
 const TRUST_ITEMS = [
   { icon: Clock, label: '7-day trial' },
@@ -59,7 +60,10 @@ const AuthSplitLayout = ({
               {subtitle && <p className="auth-card__subtitle">{subtitle}</p>}
             </header>
 
-            <div className="auth-card__form">{children}</div>
+            <div className="auth-card__form">
+              <ApiStatusBar className="mb-4" />
+              {children}
+            </div>
 
             {showTrust && mode !== 'reset' && (
               <ul className="auth-card__trust" aria-label="Platform benefits">

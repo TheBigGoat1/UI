@@ -1,0 +1,834 @@
+/* Global Economy — MRKT-style indicator dashboard */
+
+.ge-page {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  gap: 0.75rem;
+}
+
+.ge-page__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.ge-page__title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.ge-page__icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(34, 211, 238, 0.12);
+  color: var(--accent, #22d3ee);
+  border: 1px solid rgba(34, 211, 238, 0.25);
+}
+
+.ge-page__title {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.ge-page__sub {
+  margin: 0.15rem 0 0;
+  font-size: 0.82rem;
+  color: var(--text-muted, rgba(203, 213, 225, 0.72));
+}
+
+.ge-page__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.ge-page__country {
+  min-width: 180px;
+}
+
+.ge-page__view-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border-subtle, rgba(148, 163, 184, 0.14));
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.ge-page__view-toggle button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.65rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: transparent;
+}
+
+.ge-page__view-toggle button.is-active {
+  background: rgba(34, 211, 238, 0.12);
+  color: var(--accent, #22d3ee);
+}
+
+.ge-page__refresh {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.ge-page__meta {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.ge-page__error {
+  margin: 0;
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid rgba(239, 68, 68, 0.35);
+  background: rgba(239, 68, 68, 0.08);
+  color: #fca5a5;
+  font-size: 0.82rem;
+}
+
+.ge-page__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-bottom: 2rem;
+}
+
+.ge-section {
+  margin-bottom: 1.35rem;
+}
+
+.ge-section__title {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0 0 0.65rem;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.ge-section__count {
+  font-size: 0.65rem;
+  font-weight: 800;
+  padding: 0.1rem 0.4rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-muted);
+}
+
+.ge-section__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 0.65rem;
+}
+
+.ge-section__grid--list {
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+}
+
+.ge-card {
+  background: rgba(11, 18, 32, 0.92);
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 12px;
+  padding: 0.75rem 0.85rem 0.65rem;
+  min-height: 148px;
+  display: flex;
+  flex-direction: column;
+}
+
+.ge-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.35rem;
+}
+
+.ge-card__title {
+  margin: 0;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: rgba(226, 232, 240, 0.92);
+  line-height: 1.3;
+}
+
+.ge-card__period {
+  font-size: 0.62rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.ge-card__body {
+  display: flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  margin: 0.35rem 0 0.45rem;
+}
+
+.ge-card__value {
+  font-size: 1.35rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.02em;
+}
+
+.ge-card__delta {
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 0.12rem 0.35rem;
+  border-radius: 999px;
+}
+
+.ge-card__delta--up {
+  color: #34d399;
+  background: rgba(52, 211, 153, 0.12);
+}
+
+.ge-card__delta--down {
+  color: #f87171;
+  background: rgba(248, 113, 113, 0.12);
+}
+
+.ge-card__delta--flat {
+  color: var(--text-muted);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.ge-card__chart {
+  position: relative;
+  height: 72px;
+  margin-top: auto;
+}
+
+.ge-card__svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.ge-card__line {
+  stroke: rgba(34, 211, 238, 0.85);
+  stroke-width: 1.5;
+}
+
+.ge-card__crosshair {
+  stroke: rgba(148, 163, 184, 0.45);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.ge-card__dot {
+  fill: rgba(34, 211, 238, 0.95);
+  stroke: #0b1220;
+  stroke-width: 1.5;
+}
+
+.ge-card__tip {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  transform: translateX(-50%);
+  min-width: 120px;
+  padding: 0.35rem 0.5rem;
+  border-radius: 8px;
+  background: rgba(15, 23, 42, 0.96);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.ge-card__tip-date {
+  display: block;
+  font-size: 0.62rem;
+  color: var(--text-muted);
+}
+
+.ge-card__tip-val {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  margin-top: 0.1rem;
+}
+
+/* Economic calendar — pro table layout */
+.economic-cal--pro {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  gap: 0.75rem;
+}
+
+.economic-cal--pro .economic-cal__stats {
+  display: none;
+}
+
+.economic-cal--pro .economic-cal__main-grid {
+  display: block;
+  flex: 1;
+  min-height: 0;
+}
+
+.economic-cal--pro .economic-cal__sidebar {
+  display: none;
+}
+
+.economic-cal__pro-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.78rem;
+}
+
+.economic-cal__pro-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: rgba(5, 10, 20, 0.98);
+  padding: 0.55rem 0.5rem;
+  text-align: left;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
+}
+
+.economic-cal__pro-table tbody td {
+  padding: 0.55rem 0.5rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.08);
+  vertical-align: middle;
+}
+
+.economic-cal__pro-table tbody tr:hover {
+  background: rgba(34, 211, 238, 0.04);
+}
+
+.economic-cal__pro-day {
+  padding: 0.45rem 0.65rem;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--accent);
+  background: rgba(5, 10, 20, 0.95);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  position: sticky;
+  top: 32px;
+  z-index: 1;
+}
+
+.economic-cal__impact--high {
+  color: #f87171;
+  font-weight: 700;
+  font-size: 0.65rem;
+}
+
+.economic-cal__impact--med {
+  color: #fbbf24;
+  font-weight: 700;
+  font-size: 0.65rem;
+}
+
+.economic-cal__impact--low {
+  color: var(--text-muted);
+  font-size: 0.65rem;
+}
+
+.economic-cal__ccy {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-weight: 700;
+  font-size: 0.68rem;
+}
+
+.economic-cal__brain {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  background: rgba(34, 211, 238, 0.08);
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.economic-cal__pro-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(5, 10, 20, 0.85);
+}
+
+.economic-cal__pro-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(226, 232, 240, 0.92);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.economic-cal__pro-btn--ghost {
+  color: var(--text-muted);
+}
+
+.economic-cal__pro-btn--accent {
+  border-color: rgba(34, 211, 238, 0.35);
+  background: rgba(34, 211, 238, 0.1);
+  color: var(--accent, #22d3ee);
+}
+
+.economic-cal__pro-btn--icon {
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  justify-content: center;
+}
+
+.economic-cal__pro-select {
+  min-width: 150px;
+}
+
+.economic-cal__impact-pills {
+  display: inline-flex;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
+.economic-cal__impact-pill {
+  padding: 0.35rem 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  background: transparent;
+}
+
+.economic-cal__impact-pill.is-active {
+  border-color: rgba(34, 211, 238, 0.4);
+  background: rgba(34, 211, 238, 0.1);
+  color: var(--accent);
+}
+
+.economic-cal__impact-pill--high.is-active { color: #f87171; border-color: rgba(248, 113, 113, 0.4); }
+.economic-cal__impact-pill--med.is-active { color: #fbbf24; border-color: rgba(251, 191, 36, 0.4); }
+.economic-cal__impact-pill--low.is-active { color: #a3e635; border-color: rgba(163, 230, 53, 0.35); }
+
+.economic-cal__pro-search {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 1;
+  min-width: 160px;
+  max-width: 280px;
+  margin-left: auto;
+  padding: 0.4rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--text-muted);
+}
+
+.economic-cal__pro-search input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  outline: none;
+  font-size: 0.75rem;
+  color: #fff;
+}
+
+.economic-cal--pro .economic-cal__events-panel,
+.economic-cal--pro .bg-surface.border.border-border.rounded-xl {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(5, 10, 20, 0.6);
+  overflow: hidden;
+}
+
+.economic-cal--pro-drawer-open {
+  padding-bottom: 220px;
+}
+
+.economic-cal__pro-clock {
+  font-family: ui-monospace, monospace;
+  font-size: 0.72rem;
+  color: var(--accent, #22d3ee);
+  padding: 0.35rem 0.55rem;
+  border-radius: 6px;
+  border: 1px solid rgba(34, 211, 238, 0.2);
+  background: rgba(34, 211, 238, 0.06);
+}
+
+.economic-cal__impact-pill-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+  margin-right: 0.25rem;
+}
+
+.economic-cal__impact-pill-dot--high { background: #f87171; }
+.economic-cal__impact-pill-dot--med { background: #fbbf24; }
+.economic-cal__impact-pill-dot--low { background: #a3e635; }
+.economic-cal__impact-pill-dot--none { background: #64748b; }
+
+.economic-cal__impact-pill--none.is-active { color: #94a3b8; border-color: rgba(148, 163, 184, 0.35); }
+
+.economic-cal__brain.is-active {
+  background: rgba(139, 92, 246, 0.35);
+  border-color: rgba(167, 139, 250, 0.6);
+}
+
+.econ-cal-pro__scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.econ-cal-pro__table thead th {
+  top: 0;
+}
+
+.econ-cal-pro__day-row td {
+  padding: 0.5rem 0.65rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #fff;
+  background: rgba(15, 23, 42, 0.95);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+}
+
+.econ-cal-pro__time {
+  font-family: ui-monospace, monospace;
+  font-size: 0.72rem;
+  color: #94a3b8;
+  white-space: nowrap;
+  width: 3.5rem;
+}
+
+.econ-cal-pro__event {
+  font-weight: 500;
+  color: #f1f5f9;
+  min-width: 140px;
+}
+
+.econ-cal-pro__impact {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.62rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.econ-cal-pro__impact-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.econ-cal-pro__impact--high { color: #f87171; }
+.econ-cal-pro__impact--high .econ-cal-pro__impact-dot { background: #f87171; }
+.econ-cal-pro__impact--med { color: #fbbf24; }
+.econ-cal-pro__impact--med .econ-cal-pro__impact-dot { background: #fbbf24; }
+.econ-cal-pro__impact--low { color: #a3e635; }
+.econ-cal-pro__impact--low .econ-cal-pro__impact-dot { background: #a3e635; }
+.econ-cal-pro__impact--none { color: #94a3b8; }
+.econ-cal-pro__impact--none .econ-cal-pro__impact-dot { background: #64748b; }
+
+.econ-cal-pro__flag {
+  width: 18px;
+  height: 12px;
+  border-radius: 2px;
+  object-fit: cover;
+}
+
+.econ-cal-pro__data {
+  text-align: right;
+  font-family: ui-monospace, monospace;
+  font-size: 0.68rem;
+  color: #94a3b8;
+  min-width: 3rem;
+}
+
+.econ-cal-pro__data--surprise {
+  color: #34d399;
+  font-weight: 700;
+}
+
+.econ-cal-pro__th-num {
+  text-align: right !important;
+}
+
+.econ-cal-pro__th-brain {
+  width: 2.5rem;
+}
+
+.econ-cal-pro__brain-cell {
+  text-align: center;
+}
+
+.econ-cal-pro__row--active {
+  background: rgba(139, 92, 246, 0.08);
+}
+
+.econ-cal-pro__loading,
+.econ-cal-pro__empty {
+  padding: 2rem;
+  text-align: center;
+  color: #64748b;
+}
+
+.econ-cal-pro__skel {
+  height: 2.5rem;
+  margin-bottom: 0.5rem;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.04);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+.econ-cal-brain-drawer {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 50;
+  background: rgba(5, 8, 16, 0.98);
+  border-top: 1px solid rgba(34, 211, 238, 0.35);
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.55);
+  max-height: 52vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.econ-cal-brain-drawer__tabs {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.45rem 0.75rem;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+  overflow-x: auto;
+  flex-shrink: 0;
+}
+
+.econ-cal-brain-drawer__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #22d3ee;
+  white-space: nowrap;
+  flex-shrink: 0;
+  margin-right: 0.35rem;
+}
+
+.econ-cal-brain-drawer__tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: #c4b5fd;
+  padding: 0.25rem 0.5rem;
+  border-radius: 6px;
+  background: rgba(88, 28, 135, 0.35);
+  white-space: nowrap;
+}
+
+.econ-cal-brain-drawer__actions {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.econ-cal-brain-drawer__clear {
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #94a3b8;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.econ-cal-brain-drawer__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.2rem;
+  color: #94a3b8;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.econ-cal-brain-drawer__row {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0.65rem;
+  padding: 0.65rem 0.75rem 0.85rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  flex: 1;
+  min-height: 0;
+}
+
+.econ-cal-brain-card {
+  flex: 0 0 min(380px, 92vw);
+  max-width: 420px;
+  background: rgba(15, 23, 42, 0.85);
+  border: 1px solid rgba(34, 211, 238, 0.15);
+  border-radius: 10px;
+  padding: 0.75rem 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  max-height: 100%;
+}
+
+.econ-cal-brain-card__title-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.35rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.econ-cal-brain-card__brain-icon {
+  color: #22d3ee;
+  flex-shrink: 0;
+  margin-top: 0.1rem;
+}
+
+.econ-cal-brain-card__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 0.15rem;
+}
+
+.econ-cal-brain-card__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.econ-cal-brain-card__title {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #fff;
+  line-height: 1.3;
+}
+
+.econ-cal-brain-card__close {
+  background: transparent;
+  border: none;
+  color: #64748b;
+  cursor: pointer;
+  padding: 0;
+}
+
+.econ-cal-brain-card__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+  font-size: 0.62rem;
+  color: #94a3b8;
+}
+
+.econ-cal-brain-card__impact {
+  font-weight: 700;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+.econ-cal-brain-card__impact--high { color: #f87171; background: rgba(248, 113, 113, 0.12); }
+.econ-cal-brain-card__impact--med { color: #fbbf24; background: rgba(251, 191, 36, 0.12); }
+.econ-cal-brain-card__impact--low { color: #a3e635; background: rgba(163, 230, 53, 0.1); }
+
+.econ-cal-brain-card__countdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  align-self: flex-start;
+  font-size: 0.62rem;
+  font-weight: 700;
+  color: #c4b5fd;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  background: rgba(88, 28, 135, 0.45);
+  border: 1px solid rgba(139, 92, 246, 0.35);
+}
+
+.econ-cal-brain-card__countdown-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #a78bfa;
+}
+
+.econ-cal-brain-card__loading {
+  font-size: 0.68rem;
+  color: var(--accent, #22d3ee);
+  margin: 0;
+}
+
+.econ-cal-brain-card__bullets {
+  margin: 0;
+  padding-left: 1rem;
+  font-size: 0.68rem;
+  line-height: 1.45;
+  color: #cbd5e1;
+}
+
+.econ-cal-brain-card__bullets li {
+  margin-bottom: 0.35rem;
+}

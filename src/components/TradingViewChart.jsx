@@ -11,8 +11,9 @@ import {
   normalizeOhlcRows,
 } from '../utils/chartConfig.js';
 import OhlcVisualChart from './OhlcVisualChart.jsx';
+import { warmTradingViewScript, TV_SCRIPT } from '../utils/tvScriptLoader.js';
 
-const TV_SCRIPT = 'https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+const TV_SCRIPT_URL = TV_SCRIPT;
 
 function formatLevelPrice(price) {
   const n = parseFloat(price);
@@ -33,10 +34,10 @@ function mountTradingViewWidget(container, options) {
   widget.style.cssText = 'height:100%;width:100%;min-height:100%;';
 
   const script = document.createElement('script');
-  script.src = TV_SCRIPT;
+  script.src = TV_SCRIPT_URL;
   script.type = 'text/javascript';
   script.async = true;
-  script.innerHTML = JSON.stringify(options);
+  script.textContent = JSON.stringify(options);
 
   outer.appendChild(widget);
   outer.appendChild(script);
@@ -81,6 +82,11 @@ const TradingViewChart = ({
 
   useEffect(() => {
     if (!symbol) return undefined;
+    if (tvSupported && !preferDataFeed && !useFallback) {
+      setBars([]);
+      setLoading(true);
+      return undefined;
+    }
     if (hasProvidedBars) {
       setBars(normalizeOhlcRows(data));
       setLoading(false);
@@ -118,20 +124,22 @@ const TradingViewChart = ({
     return () => {
       active = false;
     };
-  }, [symbol, interval, compact, modelMode, quotePrice, data, hasProvidedBars]);
+  }, [symbol, interval, compact, modelMode, quotePrice, data, hasProvidedBars, tvSupported, preferDataFeed, useFallback]);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el || !symbol || preferDataFeed || !tvSupported) return undefined;
 
+    let cancelled = false;
     setTvReady(false);
     setUseFallback(false);
-    setLoading(true);
+    setLoading(false);
 
     const bg = isDark ? '#131722' : '#ffffff';
 
-    const mountTimer = window.setTimeout(() => {
-      mountTradingViewWidget(el, {
+    const mountWidget = () => {
+      if (cancelled || !containerRef.current) return;
+      mountTradingViewWidget(containerRef.current, {
         autosize: true,
         width: '100%',
         symbol: tvSymbol,
@@ -145,37 +153,46 @@ const TradingViewChart = ({
         hide_top_toolbar: compact || !interactive,
         hide_side_toolbar: compact || !interactive,
         hide_legend: compact,
-        hide_volume: compact,
+        hide_volume: true,
         withdateranges: interactive && !compact,
         save_image: false,
         calendar: false,
         support_host: 'https://www.tradingview.com',
         backgroundColor: bg,
         gridColor: isDark ? 'rgba(39, 39, 42, 0.8)' : 'rgba(0, 0, 0, 0.08)',
+        studies: [],
+        disabled_features: ['header_symbol_search', 'symbol_search_hot_key'],
+        enabled_features: ['hide_left_toolbar_by_default'],
       });
-    }, 50);
+    };
+
+    warmTradingViewScript().finally(() => {
+      if (!cancelled) mountWidget();
+    });
 
     const checkTimer = window.setInterval(() => {
-      if (hasTvIframe(el)) {
+      if (cancelled || !containerRef.current) return;
+      if (hasTvIframe(containerRef.current)) {
         setTvReady(true);
         setUseFallback(false);
         setLoading(false);
         onReady?.();
         window.clearInterval(checkTimer);
       }
-    }, 400);
+    }, 150);
 
     const fallbackTimer = window.setTimeout(() => {
       window.clearInterval(checkTimer);
-      if (!hasTvIframe(el)) {
+      if (cancelled || !containerRef.current) return;
+      if (!hasTvIframe(containerRef.current)) {
         setUseFallback(true);
         setTvReady(false);
       }
       setLoading(false);
-    }, 4500);
+    }, 8000);
 
     return () => {
-      window.clearTimeout(mountTimer);
+      cancelled = true;
       window.clearTimeout(fallbackTimer);
       window.clearInterval(checkTimer);
       if (el) el.innerHTML = '';
@@ -196,7 +213,7 @@ const TradingViewChart = ({
   const visibleLevels = (levels || []).filter((l) => formatLevelPrice(l.price) != null);
   const hasBars = bars.length > 0;
   const showFallbackBars =
-    hasBars && (modelMode || useFallback || !tvReady || preferDataFeed || !tvSupported);
+    hasBars && (preferDataFeed || !tvSupported || useFallback);
 
   return (
     <div
@@ -215,29 +232,24 @@ const TradingViewChart = ({
       {!preferDataFeed && !useFallback && tvSupported && (
         <div
           ref={containerRef}
-          className={`tradingview-chart-mount ${
-            tvReady ? 'tradingview-chart-mount--overlay' : 'tradingview-chart-mount--preload'
+          className={`tradingview-chart-mount tradingview-chart-mount--overlay ${
+            tvReady ? '' : 'tradingview-chart-mount--booting'
           }`}
           style={{ height: pxHeight, minHeight: pxHeight }}
         />
       )}
 
-      {loading && !hasBars && (
-        <div className="tradingview-chart-mount__loader" aria-hidden="true">
-          <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
-          <span className="text-xs text-text-muted mt-2">Loading chart…</span>
+      {!tvReady && !useFallback && tvSupported && !preferDataFeed && (
+        <div className="tradingview-chart-mount__loader tradingview-chart-mount__loader--thin" aria-hidden="true">
+          <div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" />
         </div>
       )}
 
-      {(modelMode || useFallback || (!tvReady && hasBars && !preferDataFeed) || !tvSupported) && (
+      {(useFallback || !tvSupported) && (
         <span className={`ohlc-visual__badge ${modelMode ? 'ohlc-visual__badge--model' : ''}`}>
-          {modelMode
-            ? 'Model candles · TV shows live broker data'
-              : useFallback
-              ? 'Live candles · open TradingView for full tools'
-              : !tvSupported
-                ? 'Live fallback candles · TV symbol unavailable'
-                : 'Loading TradingView…'}
+          {useFallback
+            ? 'Live candles · open TradingView for full tools'
+            : 'Live fallback candles · TV symbol unavailable'}
         </span>
       )}
 

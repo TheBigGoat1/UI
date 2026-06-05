@@ -1,4 +1,6 @@
 import React from 'react';
+import { RefreshCw, Wifi, WifiOff } from 'lucide-react';
+import { formatRelativeSync } from '../../utils/displayFormat.js';
 import MrktAssetDropdown from './MrktAssetDropdown.jsx';
 import {
   Tag,
@@ -45,6 +47,7 @@ const MrktChartToolbar = ({
   access,
   onUpgrade,
   layout,
+  status,
 }) => {
   const activeTf =
     TIMEFRAMES.find((t) => t.interval === interval)?.label ||
@@ -60,6 +63,7 @@ const MrktChartToolbar = ({
   };
 
   return (
+    <div className="mrkt-chart-toolbar-wrap">
     <div className="mrkt-chart-toolbar">
       <div className="mrkt-chart-toolbar__left">
         <MrktAssetDropdown
@@ -121,6 +125,32 @@ const MrktChartToolbar = ({
           </button>
         )}
       </div>
+    </div>
+    {status && (
+      <div className="mrkt-chart-toolbar-status" role="status" aria-live="polite">
+        <span className={`mrkt-chart-toolbar-status__live ${status.socketLive ? 'is-live' : ''}`}>
+          {status.socketLive ? <Wifi size={10} /> : <WifiOff size={10} />}
+          {status.socketLive ? 'Live' : 'REST'}
+        </span>
+        <span>Tape <strong>{formatRelativeSync(status.lastPriceSync)}</strong></span>
+        <span>News <strong>{formatRelativeSync(status.lastNewsSync)}</strong></span>
+        {!status.chartLive && <span className="mrkt-chart-toolbar-status__warn">model bars</span>}
+        {status.quoteDriftPct != null && (
+          <span>
+            Sync <strong>{status.quoteDriftPct.toFixed(2)}%</strong>
+          </span>
+        )}
+        <button
+          type="button"
+          className="mrkt-chart-toolbar-status__sync"
+          onClick={status.onRefresh}
+          disabled={status.refreshing}
+          title="Sync all feeds"
+        >
+          <RefreshCw size={11} className={status.refreshing ? 'animate-spin' : ''} />
+        </button>
+      </div>
+    )}
     </div>
   );
 };

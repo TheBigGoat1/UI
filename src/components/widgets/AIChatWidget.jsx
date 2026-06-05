@@ -40,7 +40,7 @@ const AIChatWidget = () => {
         {
           id: Date.now() + 1,
           sender: 'ai',
-          text: 'Server unreachable. Ensure the API is running on port 3001.',
+          text: 'Server unreachable. Run npm run dev:all so the API listens on port 3003.',
         },
       ]);
     } finally {

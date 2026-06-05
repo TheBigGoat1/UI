@@ -1,4 +1,5 @@
 import { env, envBool } from "../config/env.js";
+import { buildAssetNewsQuery, cryptopanicCurrency } from "./newsAssetQuery.js";
 
 const getCryptoPanicBase = () => {
   const plan = env("CRYPTOPANIC_API_PLAN", "developer");
@@ -41,11 +42,11 @@ export function getConfiguredNewsSources() {
 }
 
 function buildSearchQuery(query, asset) {
-  const currency = String(asset || "")
-    .replace(/USDT|USD/gi, "")
-    .toUpperCase();
+  const sym = String(asset || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
   if (query) return query;
-  if (currency) return `${currency} cryptocurrency`;
+  if (sym) return buildAssetNewsQuery(sym);
   return "cryptocurrency OR bitcoin OR forex markets";
 }
 
@@ -53,15 +54,15 @@ export async function fetchNewsApi({ query = "", asset = "", limit = 20 }) {
   const apiKey = env("NEWSAPI_API_KEY");
   if (!apiKey) return [];
 
+  const sym = String(asset || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
   const explicitQ = String(query || "").trim();
-  const assetQ = asset
-    ? `${String(asset).replace(/USDT|USD/gi, "")} forex OR cryptocurrency`
-    : "";
   const searchQ =
     explicitQ && explicitQ.toLowerCase() !== "markets"
       ? explicitQ
-      : asset
-        ? assetQ
+      : sym
+        ? buildAssetNewsQuery(sym)
         : "";
   const pageSize = String(Math.min(limit, 100));
   const params = new URLSearchParams({
@@ -70,17 +71,18 @@ export async function fetchNewsApi({ query = "", asset = "", limit = 20 }) {
     apiKey,
   });
 
+  let url;
   if (searchQ.length > 2) {
     params.set("q", searchQ.slice(0, 200));
+    params.set("sortBy", "publishedAt");
+    url = `https://newsapi.org/v2/everything?${params.toString()}`;
   } else {
     params.set("category", "business");
     params.set("country", "us");
+    url = `https://newsapi.org/v2/top-headlines?${params.toString()}`;
   }
 
-  const response = await fetch(
-    `https://newsapi.org/v2/top-headlines?${params.toString()}`,
-    { headers: { "User-Agent": "INSIDR/1.0" } },
-  );
+  const response = await fetch(url, { headers: { "User-Agent": "INSIDR/1.0" } });
   if (!response.ok) throw new Error(`NewsAPI ${response.status}`);
 
   const json = await response.json();
@@ -113,7 +115,11 @@ export async function fetchNewsData({ query = "", asset = "", limit = 20 }) {
   const apiKey = env("NEWSDATA_API_KEY");
   if (!apiKey) return [];
 
-  const q = query || asset.replace(/USDT|USD/gi, "") || "cryptocurrency";
+  const q =
+    query ||
+    (asset
+      ? buildAssetNewsQuery(String(asset).toUpperCase().replace(/[^A-Z0-9]/g, ""))
+      : "cryptocurrency");
   const endpoints = [
     `https://newsdata.io/api/1/crypto?${new URLSearchParams({ apikey: apiKey, q, language: "en" })}`,
     `https://newsdata.io/api/1/news?${new URLSearchParams({ apikey: apiKey, q, category: "business", language: "en" })}`,
@@ -234,7 +240,10 @@ export async function fetchAllNews({ query = "", asset = "", limit = 20 }) {
 }
 
 export async function fetchAllNewsDetailed({ query = "", asset = "", limit = 20 }) {
-  const currency = asset.replace(/USDT|USD/gi, "").toUpperCase() || "";
+  const sym = String(asset || "")
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+  const currency = cryptopanicCurrency(sym) || sym.replace(/USDT|USD/gi, "").toUpperCase() || "";
   const perSource = Math.max(8, Math.ceil(limit / 4));
   const sources = getConfiguredNewsSources();
   const breakdown = {};

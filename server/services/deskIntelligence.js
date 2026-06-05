@@ -371,6 +371,14 @@ export async function analyzeCalendarEventDesk({ event, symbol = "XAUUSD" }) {
   }
 
   const sym = String(symbol || "XAUUSD").toUpperCase();
+  const eventKey = event?.id || `${title}-${event?.event_time || ""}`;
+  const cacheKey = `desk:cal-event:${sym}:${eventKey}`;
+
+  return cached(cacheKey, 5 * 60 * 1000, () => buildCalendarEventDeskAnalysis({ event, symbol: sym }));
+}
+
+async function buildCalendarEventDeskAnalysis({ event, symbol: sym }) {
+  const title = event?.event_name || event?.event || event?.title || "";
   const model = env("ANTHROPIC_MODEL", "claude-sonnet-4-20250514");
   const prices = await getAllPrices().catch(() => ({}));
   const base = buildDeterministicEventAnalysis({ event, symbol: sym, prices });
@@ -461,13 +469,23 @@ DESK READ must address ${sym} directly. TRADING NOTES must cover timing, size, a
 }
 
 export async function getDeskIntelligenceBundle(symbol = "XAUUSD") {
+  const key = String(symbol || "XAUUSD").toUpperCase();
+  return cached(`desk:bundle:${key}`, 30_000, () => buildDeskIntelligenceBundle(key));
+}
+
+async function buildDeskIntelligenceBundle(symbol) {
   const prices = await getAllPrices().catch(() => ({}));
   const brief = await safeBrief();
 
   const [capitalFlows, fedSeries, rateRows, scheduleRisk, sentiment] = await Promise.all([
-    getCapitalFlowsLive().catch(() => getCapitalFlowsFromPrices(prices)),
+    Promise.race([
+      getCapitalFlowsLive(),
+      new Promise((resolve) =>
+        setTimeout(() => resolve(getCapitalFlowsFromPrices(prices)), 2500),
+      ),
+    ]).catch(() => getCapitalFlowsFromPrices(prices)),
     getFedPolicySeries().catch(() => ({ series: [], latestRate: null, source: "unavailable" })),
-    getRateDecisionRows().catch(() => ({ rows: [], source: "unavailable" })),
+    getRateDecisionRowsLive().catch(() => ({ rows: [], source: "unavailable" })),
     getScheduleRiskDesk().catch(() => ({
       asOf: new Date().toISOString(),
       score: null,

@@ -3,6 +3,8 @@ import { api } from "../../services/api/api.js";
 import PageHeader from "../layout/PageHeader";
 import EventGateBanner from "../trading/EventGateBanner";
 import DashSelect from "../ui/DashSelect.jsx";
+import EconomicCalendarProTable from "./EconomicCalendarProTable.jsx";
+import EconomicCalendarBrainDrawer from "./EconomicCalendarBrainDrawer.jsx";
 import {
   CalendarDays,
   RefreshCw,
@@ -35,6 +37,17 @@ const MONTH_NAMES = [
 ];
 
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+const CATEGORY_FILTERS = [
+  { id: "ALL", label: "Categories" },
+  { id: "EMPLOYMENT", label: "Employment", re: /employ|nfp|payroll|jobless|unemployment|claims/i },
+  { id: "INFLATION", label: "Inflation", re: /cpi|ppi|pce|inflation|price index/i },
+  { id: "RATES", label: "Rates", re: /rate|fomc|fed|ecb|boe|boj|policy|decision/i },
+  { id: "PMI", label: "PMI", re: /pmi|ism|manufacturing|services/i },
+  { id: "GDP", label: "GDP", re: /gdp|growth|output/i },
+];
+
+const DEFAULT_COUNTRIES = ["US", "EU", "GB", "JP", "AU", "CA", "CH"];
 
 const flagCode = (country) => {
   const c = String(country || "").toLowerCase();
@@ -88,11 +101,18 @@ function countryHintForSymbol(symbol) {
   return "US";
 }
 
-const EconomicCalendar = ({ embedded = false, defaultSymbol = null, onEventInsight = null }) => {
+const EconomicCalendar = ({
+  embedded = false,
+  proLayout = false,
+  defaultSymbol = null,
+  onEventInsight = null,
+  prices = {},
+  onSelectAsset = null,
+}) => {
   const now = new Date();
   const [year, setYear] = useState(now.getUTCFullYear());
   const [month, setMonth] = useState(now.getUTCMonth());
-  const [viewMode, setViewMode] = useState("month");
+  const [viewMode, setViewMode] = useState(proLayout ? "list" : "month");
   const [years, setYears] = useState([]);
   const [events, setEvents] = useState([]);
   const [summary, setSummary] = useState(null);
@@ -102,6 +122,10 @@ const EconomicCalendar = ({ embedded = false, defaultSymbol = null, onEventInsig
   const [syncing, setSyncing] = useState(false);
   const [expandedId, setExpandedId] = useState(null);
   const [selectedDay, setSelectedDay] = useState(null);
+  const [clock, setClock] = useState(() => new Date());
+  const [category, setCategory] = useState("ALL");
+  const [insightEvents, setInsightEvents] = useState([]);
+  const [insightIds, setInsightIds] = useState(() => new Set());
 
   const [filters, setFilters] = useState({
     country: embedded && defaultSymbol ? countryHintForSymbol(defaultSymbol) : "ALL",
@@ -130,21 +154,32 @@ const EconomicCalendar = ({ embedded = false, defaultSymbol = null, onEventInsig
     try {
       const params = {
         limit: 500,
-        year,
-        ...(filters.country !== "ALL" && { country: filters.country }),
-        ...(filters.importance !== "ALL" && { importance: filters.importance }),
         ...(filters.q && { q: filters.q }),
       };
 
-      if (viewMode === "year" || viewMode === "list") {
-        delete params.month;
+      if (proLayout) {
+        const from = new Date();
+        from.setUTCHours(0, 0, 0, 0);
+        from.setUTCDate(from.getUTCDate() - 1);
+        const to = new Date(from.getTime() + 21 * 24 * 60 * 60 * 1000);
+        params.from = from.toISOString().slice(0, 10);
+        params.to = to.toISOString().slice(0, 10);
+        if (filters.country !== "ALL") params.country = filters.country;
+        if (filters.importance !== "ALL") params.importance = filters.importance;
       } else {
-        params.month = month + 1;
+        params.year = year;
+        if (filters.country !== "ALL") params.country = filters.country;
+        if (filters.importance !== "ALL") params.importance = filters.importance;
+        if (viewMode === "year" || viewMode === "list") {
+          delete params.month;
+        } else {
+          params.month = month + 1;
+        }
       }
 
       const [eventsRes, summaryRes] = await Promise.all([
         api.calendar.getEvents(params),
-        api.calendar.getSummary(year),
+        proLayout ? Promise.resolve(null) : api.calendar.getSummary(year),
       ]);
 
       if (eventsRes?.success) {
@@ -165,7 +200,13 @@ const EconomicCalendar = ({ embedded = false, defaultSymbol = null, onEventInsig
     } finally {
       setLoading(false);
     }
-  }, [year, month, viewMode, filters]);
+  }, [year, month, viewMode, filters, proLayout]);
+
+  useEffect(() => {
+    if (!proLayout) return undefined;
+    const id = setInterval(() => setClock(new Date()), 1000);
+    return () => clearInterval(id);
+  }, [proLayout]);
 
   useEffect(() => {
     loadYears();
@@ -198,7 +239,64 @@ const EconomicCalendar = ({ embedded = false, defaultSymbol = null, onEventInsig
     setYear(t.getUTCFullYear());
     setMonth(t.getUTCMonth());
     setSelectedDay(null);
-    setViewMode("month");
+    setViewMode(proLayout ? "list" : "month");
+  };
+
+  const resetFilters = () => {
+    setFilters({ country: "ALL", importance: "ALL", q: "" });
+    setCategory("ALL");
+    setSelectedDay(null);
+  };
+
+  const toggleBrainInsight = (event, rowKey) => {
+    const key = rowKey || event.id || `${event.event_name}-${event.event_time}`;
+    setInsightIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+    setInsightEvents((prev) => {
+      const exists = prev.some(
+        (e) => (e.id || `${e.event_name}-${e.event_time}`) === key,
+      );
+      if (exists) return prev.filter((e) => (e.id || `${e.event_name}-${e.event_time}`) !== key);
+      return [...prev, { ...event, _rowKey: key }];
+    });
+  };
+
+  const clearInsight = (event) => {
+    const key = event._rowKey || event.id || `${event.event_name}-${event.event_time}`;
+    setInsightEvents((prev) =>
+      prev.filter((e) => (e._rowKey || e.id || `${e.event_name}-${e.event_time}`) !== key),
+    );
+    setInsightIds((prev) => {
+      const next = new Set(prev);
+      next.delete(key);
+      return next;
+    });
+  };
+
+  const clearAllInsights = () => {
+    setInsightEvents([]);
+    setInsightIds(new Set());
+  };
+
+  const scrollUpNext = () => {
+    const nowMs = Date.now();
+    const source = proLayout ? proFilteredEvents : events;
+    const upcoming = source
+      .filter((e) => new Date(e.event_time).getTime() >= nowMs)
+      .sort((a, b) => new Date(a.event_time) - new Date(b.event_time))[0];
+    if (!upcoming) return;
+    const dayKey = toDayKey(upcoming.event_time);
+    setSelectedDay(dayKey);
+    requestAnimationFrame(() => {
+      const el = eventsScrollRef.current?.querySelector(
+        proLayout ? `[data-day="${dayKey}"]` : `[data-day="${dayKey}"]`,
+      );
+      el?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
   };
 
   const shiftMonth = (delta) => {
@@ -241,8 +339,38 @@ const EconomicCalendar = ({ embedded = false, defaultSymbol = null, onEventInsig
       if (!groups[key]) groups[key] = [];
       groups[key].push(ev);
     }
+    for (const key of Object.keys(groups)) {
+      groups[key].sort((a, b) => new Date(a.event_time) - new Date(b.event_time));
+    }
     return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
   }, [events, selectedDay]);
+
+  const proFilteredEvents = useMemo(() => {
+    if (!proLayout) return [];
+    let list = [...events];
+    if (filters.country === "ALL") {
+      list = list.filter((e) => DEFAULT_COUNTRIES.includes(String(e.country || "").toUpperCase()));
+    }
+    if (category !== "ALL") {
+      const cat = CATEGORY_FILTERS.find((c) => c.id === category);
+      if (cat?.re) list = list.filter((e) => cat.re.test(e.event_name || e.event || ""));
+    }
+    list.sort((a, b) => new Date(a.event_time) - new Date(b.event_time));
+    return list;
+  }, [events, proLayout, filters.country, category]);
+
+  const proGroupedDays = useMemo(() => {
+    const groups = {};
+    for (const ev of proFilteredEvents) {
+      const key = toDayKey(ev.event_time);
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(ev);
+    }
+    for (const key of Object.keys(groups)) {
+      groups[key].sort((a, b) => new Date(a.event_time) - new Date(b.event_time));
+    }
+    return Object.entries(groups).sort(([a], [b]) => a.localeCompare(b));
+  }, [proFilteredEvents]);
 
   const monthGrid = useMemo(() => {
     const first = new Date(Date.UTC(year, month, 1));
@@ -259,6 +387,7 @@ const EconomicCalendar = ({ embedded = false, defaultSymbol = null, onEventInsig
 
   const todayKey = toDayKey(new Date().toISOString());
   const bootSynced = useRef(false);
+  const eventsScrollRef = useRef(null);
 
   const periodStats = useMemo(() => {
     const high = events.filter((e) => String(e.importance).toUpperCase() === "HIGH").length;
@@ -284,10 +413,12 @@ const EconomicCalendar = ({ embedded = false, defaultSymbol = null, onEventInsig
       className={
         embedded
           ? "economic-cal economic-cal--embedded"
-          : "flex flex-col gap-6 h-full min-h-0 flex-1"
+          : proLayout
+            ? `economic-cal economic-cal--pro flex flex-col gap-4 h-full min-h-0 flex-1${insightEvents.length ? " economic-cal--pro-drawer-open" : ""}`
+            : "flex flex-col gap-6 h-full min-h-0 flex-1"
       }
     >
-      {!embedded && (
+      {!embedded && !proLayout && (
         <>
           <PageHeader
             icon={CalendarDays}
@@ -318,6 +449,91 @@ const EconomicCalendar = ({ embedded = false, defaultSymbol = null, onEventInsig
         </div>
       )}
 
+      {proLayout && (
+        <div className="economic-cal__pro-toolbar">
+          <button type="button" onClick={goToday} className="economic-cal__pro-btn">
+            <CalIcon size={14} /> Today
+          </button>
+          <span className="economic-cal__pro-clock" aria-live="off">
+            {clock.toLocaleTimeString("en-GB", { hour12: false })}
+          </span>
+          <DashSelect
+            label="Countries"
+            value={filters.country}
+            onChange={(e) => setFilters((f) => ({ ...f, country: e.target.value }))}
+            wrapperClassName="economic-cal__pro-select"
+            options={[
+              { value: "ALL", label: `Countries (${DEFAULT_COUNTRIES.length})` },
+              { value: "US", label: "United States" },
+              { value: "EU", label: "Eurozone" },
+              { value: "GB", label: "United Kingdom" },
+              { value: "JP", label: "Japan" },
+              { value: "AU", label: "Australia" },
+              { value: "CA", label: "Canada" },
+              { value: "CH", label: "Switzerland" },
+              { value: "NZ", label: "New Zealand" },
+              { value: "CN", label: "China" },
+            ]}
+          />
+          <DashSelect
+            label="Categories"
+            value={category}
+            onChange={(e) => setCategory(e.target.value)}
+            wrapperClassName="economic-cal__pro-select"
+            options={CATEGORY_FILTERS.map((c) => ({ value: c.id, label: c.label }))}
+          />
+          <div className="economic-cal__impact-pills">
+            {[
+              { id: "HIGH", label: "High", cls: "high" },
+              { id: "MEDIUM", label: "Med", cls: "med" },
+              { id: "LOW", label: "Low", cls: "low" },
+              { id: "NONE", label: "None", cls: "none" },
+            ].map(({ id, label, cls }) => (
+              <button
+                key={id}
+                type="button"
+                className={`economic-cal__impact-pill economic-cal__impact-pill--${cls} ${
+                  filters.importance === id ? "is-active" : ""
+                }`}
+                onClick={() =>
+                  setFilters((f) => ({
+                    ...f,
+                    importance: f.importance === id ? "ALL" : id,
+                  }))
+                }
+              >
+                <span className={`economic-cal__impact-pill-dot economic-cal__impact-pill-dot--${cls}`} />
+                {label}
+              </button>
+            ))}
+          </div>
+          <button type="button" onClick={resetFilters} className="economic-cal__pro-btn economic-cal__pro-btn--ghost">
+            Reset
+          </button>
+          <button type="button" onClick={scrollUpNext} className="economic-cal__pro-btn economic-cal__pro-btn--accent">
+            Up next
+          </button>
+          <div className="economic-cal__pro-search">
+            <Search size={14} />
+            <input
+              type="search"
+              placeholder="Search events…"
+              value={filters.q}
+              onChange={(e) => setFilters((f) => ({ ...f, q: e.target.value }))}
+            />
+          </div>
+          <button
+            type="button"
+            onClick={loadData}
+            className="economic-cal__pro-btn economic-cal__pro-btn--icon"
+            title="Refresh"
+          >
+            <RefreshCw size={16} className={loading ? "animate-spin" : ""} />
+          </button>
+        </div>
+      )}
+
+      {!proLayout && (
       <div
         className={
           embedded
@@ -342,7 +558,9 @@ const EconomicCalendar = ({ embedded = false, defaultSymbol = null, onEventInsig
           <div className="dash-stat__value text-xl">{summary?.total ?? "—"}</div>
         </div>
       </div>
+      )}
 
+      {!proLayout && (
       <div
         className={
           embedded
@@ -542,16 +760,18 @@ const EconomicCalendar = ({ embedded = false, defaultSymbol = null, onEventInsig
           </p>
         )}
       </div>
+      )}
 
       <div
         className={
-          embedded
+          embedded || proLayout
             ? "economic-cal__main-grid"
             : "grid lg:grid-cols-[minmax(280px,320px)_1fr] gap-6 flex-1 min-h-0"
         }
       >
         {/* Sidebar: year overview or month grid */}
-        <div className="space-y-4">
+        {!proLayout && (
+        <div className="space-y-4 economic-cal__sidebar">
           {viewMode === "year" && summary?.months && (
             <div className="rounded-xl border border-border bg-surface p-4">
               <h3 className="text-xs font-bold uppercase tracking-wider text-text-muted mb-3">
@@ -636,15 +856,19 @@ const EconomicCalendar = ({ embedded = false, defaultSymbol = null, onEventInsig
             </div>
           )}
         </div>
+        )}
 
         {/* Event list */}
         <div
           className={
             embedded
               ? "economic-cal__events-panel"
-              : "bg-surface border border-border rounded-xl flex flex-col min-h-[420px] overflow-hidden"
+              : proLayout
+                ? "economic-cal__events-panel economic-cal__events-panel--pro"
+                : "bg-surface border border-border rounded-xl flex flex-col min-h-[420px] overflow-hidden"
           }
         >
+          {!proLayout && (
           <div className="px-4 py-3 border-b border-border bg-background/40 flex flex-wrap items-center justify-between gap-2">
             <h3 className="text-sm font-bold text-text-main">
               {viewMode === "list"
@@ -657,8 +881,19 @@ const EconomicCalendar = ({ embedded = false, defaultSymbol = null, onEventInsig
               Times in UTC · Actual / Forecast / Previous
             </span>
           </div>
-          <div className="overflow-y-auto flex-1 custom-scrollbar">
-            {loading ? (
+          )}
+          <div className="overflow-y-auto flex-1 custom-scrollbar" ref={eventsScrollRef}>
+            {proLayout ? (
+              <EconomicCalendarProTable
+                groupedDays={proGroupedDays}
+                loading={loading}
+                loadError={loadError}
+                onSync={handleSync}
+                syncing={syncing}
+                insightIds={insightIds}
+                onBrainClick={toggleBrainInsight}
+              />
+            ) : loading ? (
               <div className="p-8 space-y-3">
                 {Array(8)
                   .fill(0)
@@ -679,7 +914,7 @@ const EconomicCalendar = ({ embedded = false, defaultSymbol = null, onEventInsig
               </div>
             ) : (
               groupedEvents.map(([dayKey, dayEvents]) => (
-                <section key={dayKey} className="border-b border-border/60 last:border-0">
+                <section key={dayKey} className="border-b border-border/60 last:border-0" data-day={dayKey}>
                   <div className="sticky top-0 z-10 bg-background/95 backdrop-blur px-4 py-2.5 border-b border-border/50">
                     <p className="text-xs font-bold text-primary uppercase tracking-wider">
                       {formatDateLong(dayKey)}
@@ -690,9 +925,10 @@ const EconomicCalendar = ({ embedded = false, defaultSymbol = null, onEventInsig
                     <thead className="text-[10px] uppercase tracking-wider text-text-muted border-b border-border/50">
                       <tr>
                         <th className="px-4 py-2 text-left font-bold w-20">Time</th>
-                        <th className="px-2 py-2 text-left w-12" />
+                        <th className="px-2 py-2 text-left font-bold w-16">Impact</th>
+                        <th className="px-2 py-2 text-left font-bold w-14">Ccy</th>
                         <th className="px-2 py-2 text-left font-bold">Event</th>
-                        <th className="px-2 py-2 text-left font-bold">Impact</th>
+                        {proLayout && <th className="px-2 py-2 w-10" />}
                         <th className="px-3 py-2 text-right font-bold">Actual</th>
                         <th className="px-3 py-2 text-right font-bold">Forecast</th>
                         <th className="px-3 py-2 text-right font-bold">Previous</th>
@@ -719,25 +955,43 @@ const EconomicCalendar = ({ embedded = false, defaultSymbol = null, onEventInsig
                                 {formatTimeUtc(event.event_time)} UTC
                               </td>
                               <td className="px-2 py-3 w-16">
-                                <img
-                                  src={`https://flagcdn.com/w40/${flagCode(event.country)}.png`}
-                                  alt=""
-                                  className="w-6 h-4 rounded object-cover border border-border/50"
-                                  onError={(e) => {
-                                    e.target.style.display = "none";
-                                  }}
-                                />
+                                <span
+                                  className={`economic-cal__impact--${String(event.importance || 'low').toLowerCase()}`}
+                                >
+                                  {event.importance === 'HIGH' ? 'High' : event.importance === 'MEDIUM' ? 'Med' : 'Low'}
+                                </span>
+                              </td>
+                              <td className="px-2 py-3 w-14">
+                                <span className="economic-cal__ccy">
+                                  <img
+                                    src={`https://flagcdn.com/w40/${flagCode(event.country)}.png`}
+                                    alt=""
+                                    className="w-5 h-3.5 rounded object-cover border border-border/50"
+                                    onError={(e) => {
+                                      e.target.style.display = 'none';
+                                    }}
+                                  />
+                                  {event.country}
+                                </span>
                               </td>
                               <td className="px-2 py-3 font-medium text-text-main min-w-[140px]">
                                 {event.event_name}
                               </td>
-                              <td className="px-2 py-3">
-                                <span
-                                  className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border ${getImpactColor(event.importance)}`}
-                                >
-                                  {event.importance}
-                                </span>
-                              </td>
+                              {proLayout && (
+                                <td className="px-2 py-3 w-10">
+                                  <button
+                                    type="button"
+                                    className="economic-cal__brain"
+                                    title="Insidr desk read"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onEventInsight?.(event);
+                                    }}
+                                  >
+                                    <Brain size={14} />
+                                  </button>
+                                </td>
+                              )}
                               <td
                                 className={`px-3 py-3 text-right font-mono text-xs ${isSurprise ? "text-emerald-500" : ""}`}
                               >
@@ -759,7 +1013,7 @@ const EconomicCalendar = ({ embedded = false, defaultSymbol = null, onEventInsig
                             </tr>
                             {expandedId === rowKey && (
                               <tr className="bg-background/30">
-                                <td colSpan={8} className="px-4 py-4">
+                                <td colSpan={proLayout ? 9 : 8} className="px-4 py-4">
                                   <div className="grid md:grid-cols-2 gap-4">
                                     <div className="border border-border rounded-lg p-3">
                                       <p className="text-xs font-bold text-primary flex items-center gap-1 mb-2">
@@ -805,6 +1059,18 @@ const EconomicCalendar = ({ embedded = false, defaultSymbol = null, onEventInsig
           </div>
         </div>
       </div>
+
+      {proLayout && (
+        <EconomicCalendarBrainDrawer
+          events={insightEvents}
+          symbol={defaultSymbol || "XAUUSD"}
+          prices={prices}
+          onSelectAsset={onSelectAsset}
+          onRemove={clearInsight}
+          onClearAll={clearAllInsights}
+          onClose={clearAllInsights}
+        />
+      )}
     </div>
   );
 };

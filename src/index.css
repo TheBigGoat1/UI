@@ -4,8 +4,11 @@
 @import './styles/themes.css';
 @import './styles/dashboard.css';
 @import './styles/mrkt-terminal.css';
+@import './styles/live-news.css';
 @import './styles/tradingview-chart.css';
-@import './styles/tier2-brief.css';
+@import './styles/global-economy.css';
+@import './styles/backtest-fundamentals.css';
+@import './styles/ideas-lab.css';
 
 .idea-trigger-badge {
   display: inline-flex;

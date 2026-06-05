@@ -1,4 +1,4 @@
-import { ASSETS, getAssetMeta } from "../config/assets.js";
+import { ASSETS, getAssetMeta, getTradingViewTicker } from "../config/assets.js";
 import { cached, hasRedisCache } from "./cache.js";
 import { env } from "../config/env.js";
 import {
@@ -30,21 +30,8 @@ const PERIOD_RANGE = {
   "1Y": "1y",
 };
 
-const TV_FALLBACK_MAP = {
-  XAUUSD: "FOREXCOM:XAUUSD",
-  XAGUSD: "FOREXCOM:XAGUSD",
-  USOIL: "TVC:USOIL",
-  US500: "SP:SPX",
-  US30: "DJ:DJI",
-  NAS100: "NASDAQ:NDX",
-};
-
 function tradingViewTickerForMeta(meta) {
-  if (!meta?.asset) return null;
-  if (meta.binance) return `BINANCE:${meta.binance}`;
-  if (TV_FALLBACK_MAP[meta.asset]) return TV_FALLBACK_MAP[meta.asset];
-  if (/^[A-Z]{6}$/.test(meta.asset)) return `FX:${meta.asset}`;
-  return null;
+  return getTradingViewTicker(meta);
 }
 
 function intervalStep(interval) {
@@ -107,6 +94,49 @@ async function fetchTradingViewQuote(tvTicker) {
   } catch {
     return null;
   }
+}
+
+/** Batch TradingView scanner quotes — aligns desk prices with chart ticker. */
+async function fetchTradingViewQuotesBatch(entries = []) {
+  const out = {};
+  if (!entries.length) return out;
+  const CHUNK = 40;
+  for (let i = 0; i < entries.length; i += CHUNK) {
+    const chunk = entries.slice(i, i + CHUNK);
+    try {
+      const url = "https://scanner.tradingview.com/global/scan";
+      const payload = {
+        symbols: { tickers: chunk.map((e) => e.ticker), query: { types: [] } },
+        columns: ["close", "change", "change_abs"],
+      };
+      const json = await fetchJson(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const rows = Array.isArray(json?.data) ? json.data : [];
+      const byTicker = new Map(chunk.map((e) => [e.ticker, e.asset]));
+      for (const row of rows) {
+        const ticker = row?.s;
+        const asset = byTicker.get(ticker);
+        if (!asset) continue;
+        const [close, changePct, changeAbs] = Array.isArray(row?.d) ? row.d : [];
+        const price = Number(close);
+        if (!Number.isFinite(price) || price <= 0) continue;
+        out[asset] = {
+          price,
+          change: Number.isFinite(Number(changeAbs)) ? Number(changeAbs) : 0,
+          changePercent: Number.isFinite(Number(changePct)) ? Number(changePct) : 0,
+          updatedAt: new Date().toISOString(),
+          source: "tradingview",
+          synthetic: false,
+        };
+      }
+    } catch {
+      /* chunk failed — keep yahoo/binance fallbacks */
+    }
+  }
+  return out;
 }
 
 async function fetchYahooChart(yahooSymbol, interval = "1d", range = "1mo") {
@@ -227,73 +257,49 @@ export function unwrapHistory(result) {
 }
 
 export async function getAllPrices() {
-  const priceTtl = hasRedisCache() ? 4000 : 2000;
+  const priceTtl = hasRedisCache() ? 2000 : 1000;
   return cached("market:prices", priceTtl, async () => {
     const out = {};
     const cryptoAssets = ASSETS.filter((a) => isBinanceAsset(a));
+    const tvEntries = ASSETS.map((meta) => ({
+      asset: meta.asset,
+      ticker: tradingViewTickerForMeta(meta),
+    })).filter((e) => e.ticker);
 
-    try {
-      const binanceBatch = await fetchBinanceTickersForAssets(cryptoAssets);
-      Object.assign(out, binanceBatch);
-    } catch {
-      /* per-asset fallback below */
+    const [binanceBatch, tvQuotes] = await Promise.all([
+      fetchBinanceTickersForAssets(cryptoAssets).catch(() => ({})),
+      fetchTradingViewQuotesBatch(tvEntries),
+    ]);
+
+    Object.assign(out, binanceBatch);
+    for (const [asset, quote] of Object.entries(tvQuotes)) {
+      if (quote?.price != null) out[asset] = quote;
     }
 
-    await Promise.all(
-      ASSETS.map(async (meta) => {
-        if (out[meta.asset]?.source === "binance") return;
+    const missing = ASSETS.filter((meta) => !out[meta.asset]?.price);
 
+    await Promise.all(
+      missing.map(async (meta) => {
         try {
           if (isBinanceAsset(meta)) {
-            try {
-              out[meta.asset] = await fetchBinancePrice(meta.asset);
-              return;
-            } catch {
-              /* yahoo fallback */
-            }
-          }
-
-          let price = await fetchTwelveQuote(meta.asset);
-          let changePercent = 0;
-          let change = 0;
-
-          if (price == null) {
-            const bars = await fetchYahooChart(meta.yahoo, "1d", "5d");
-            if (bars.length >= 2) {
-              const last = bars[bars.length - 1];
-              const prev = bars[bars.length - 2];
-              price = last.close;
-              change = last.close - prev.close;
-              changePercent = prev.close ? (change / prev.close) * 100 : 0;
-            } else {
-              const syn = syntheticPrice(meta);
-              price = syn.price;
-              change = syn.change;
-              changePercent = syn.changePercent;
-              out[meta.asset] = {
-                price,
-                change,
-                changePercent,
-                updatedAt: new Date().toISOString(),
-                synthetic: true,
-              };
+            const row = await fetchBinancePrice(meta.asset).catch(() => null);
+            if (row?.price != null) {
+              out[meta.asset] = row;
               return;
             }
-          } else {
-            const bars = await fetchYahooChart(meta.yahoo, "1d", "5d").catch(() => []);
-            if (bars.length >= 2) {
-              const last = bars[bars.length - 1];
-              const prev = bars[bars.length - 2];
-              change = last.close - prev.close;
-              changePercent = prev.close ? (change / prev.close) * 100 : 0;
-            }
           }
-
+          const yahoo = await fetchYahooQuoteChange(meta.yahoo).catch(() => null);
+          if (yahoo?.price != null) {
+            out[meta.asset] = { ...yahoo, synthetic: false };
+            return;
+          }
+          const syn = syntheticPrice(meta);
           out[meta.asset] = {
-            price,
-            change,
-            changePercent,
+            price: syn.price,
+            change: syn.change,
+            changePercent: syn.changePercent,
             updatedAt: new Date().toISOString(),
+            synthetic: true,
           };
         } catch {
           const syn = syntheticPrice(meta);
@@ -328,7 +334,7 @@ export async function getLiveQuote(symbol) {
   const meta = getAssetMeta(symbol);
   if (!meta?.asset) return null;
   const cacheKey = `quote:live:${meta.asset}`;
-  const quoteTtl = 250;
+  const quoteTtl = 200;
 
   return cached(cacheKey, quoteTtl, async () => {
     try {

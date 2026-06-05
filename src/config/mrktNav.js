@@ -26,7 +26,7 @@ export const MRKT_NAV_SECTIONS = [
     items: [
       { name: 'Calendar', path: '/dashboard/calendar', icon: Calendar },
       { name: 'News', path: '/dashboard/news', icon: Newspaper },
-      { name: 'Markets', path: '/dashboard/economy', icon: Globe },
+      { name: 'Economy', path: '/dashboard/economy', icon: Globe },
     ],
   },
   {

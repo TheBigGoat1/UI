@@ -106,19 +106,45 @@ async function readFromDb(limit, offset = 0) {
   return rows.map(mapArticleRow);
 }
 
-/** Always returns headlines — fetches live if DB empty or unavailable */
-async function getHeadlines({ query: q = "", asset = "", limit = 20, offset = 0 }) {
+const STALE_MS = 12 * 60 * 1000;
+
+async function newestDbArticleAgeMs() {
+  const ok = await ensureNewsTable();
+  if (!ok) return Infinity;
+  try {
+    const { rows } = await query(
+      `SELECT published_at FROM news_articles ORDER BY published_at DESC LIMIT 1`,
+    );
+    if (!rows[0]?.published_at) return Infinity;
+    return Date.now() - new Date(rows[0].published_at).getTime();
+  } catch {
+    return Infinity;
+  }
+}
+
+async function refreshLiveNews({ query = "", asset = "", limit = 40 } = {}) {
+  const live = await fetchAllNews({ query, asset, limit });
+  if (live.length) await upsertArticles(live);
+  return live.map(mapLiveArticle);
+}
+
+/** Exported for background wire sync */
+export async function refreshNewsWire(limit = 40) {
+  return refreshLiveNews({ limit });
+}
+
+/** Always returns headlines — refreshes live when DB is empty or stale */
+async function getHeadlines({ query = "", asset = "", limit = 20, offset = 0, forceLive = false }) {
+  const age = await newestDbArticleAgeMs();
+  if (forceLive || age > STALE_MS) {
+    await refreshLiveNews({ query, asset, limit: Math.max(limit + offset, 40) });
+  }
+
   let rows = await readFromDb(limit, offset);
 
   if (rows.length === 0) {
-    const live = await fetchAllNews({ query: q, asset, limit: Math.max(limit, 30) });
-    if (live.length) {
-      await upsertArticles(live);
-      rows = await readFromDb(limit, offset);
-    }
-    if (rows.length === 0) {
-      rows = live.slice(offset, offset + limit).map(mapLiveArticle);
-    }
+    const live = await refreshLiveNews({ query, asset, limit: Math.max(limit, 30) });
+    rows = live.slice(offset, offset + limit);
   }
 
   return rows;
@@ -239,17 +265,25 @@ router.get("/asset/:symbol", async (req, res) => {
       .toUpperCase()
       .replace(/[^A-Z0-9]/g, "");
     const limit = Math.min(Number(req.query.limit) || 30, 60);
+    const forceLive = req.query.fresh === "1" || req.query.live === "1";
 
-    const data = await cached(`news:asset:${asset}:${limit}`, 90000, async () => {
-      const articles = await fetchAllNews({ asset, limit });
+    let data;
+    if (forceLive) {
+      const articles = await fetchAllNews({ asset, limit: Math.max(limit, 30) });
       await upsertArticles(articles);
-      return articles.map(mapLiveArticle);
-    });
+      data = articles.map(mapLiveArticle);
+    } else {
+      data = await cached(`news:asset:${asset}:${limit}`, 30000, async () => {
+        const articles = await fetchAllNews({ asset, limit: Math.max(limit, 30) });
+        await upsertArticles(articles);
+        return articles.map(mapLiveArticle);
+      });
+    }
 
     res.json({
       success: true,
       data,
-      meta: { asset, scoped: true, count: data.length },
+      meta: { asset, scoped: true, count: data.length, live: true },
     });
   } catch (error) {
     res.status(500).json({ success: false, error: error.message });

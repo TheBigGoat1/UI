@@ -16,13 +16,15 @@ import SectionErrorBoundary from '../components/SectionErrorBoundary.jsx';
 import { formatPrice } from '../utils/displayFormat.js';
 import { applyLiveSessionBias } from '../utils/liveSessionBias.js';
 import { primaryAssetForNews } from '../utils/newsAssets.js';
-import { mapNewsToChartAnnotations } from '../utils/chartCandleIntel.js';
+import { mapNewsToChartAnnotations, mapCalendarToChartAnnotations, formatChartLabelMeta, computeBarLayout } from '../utils/chartCandleIntel.js';
+import { computeChartPriceRange, priceToYPercent, distributeNewsLabelFloats } from '../utils/chartLayout.js';
 import { useChartHistory } from '../hooks/useChartHistory.js';
 import { useTerminalRealtime } from '../hooks/useTerminalRealtime.js';
 import { useAssetAnalysis } from '../hooks/useAssetAnalysis.js';
 import { useFeatureAccess } from '../hooks/useFeatureAccess.js';
 import { useLayout } from '../context/LayoutContext.jsx';
 import { resolveMarketQuote } from '../utils/marketQuote.js';
+import { resolveSovereignHeaderQuote } from '../utils/sovereignQuote.js';
 import { subscribeSocket } from '../services/realtime/socket.js';
 
 const FEATURE_TOGGLE_MAP = {
@@ -41,7 +43,6 @@ function timeframeToMs(interval = '1h') {
 }
 
 const Dashboard = () => {
-  const hideTopPrice = true;
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const access = useFeatureAccess();
@@ -60,7 +61,7 @@ const Dashboard = () => {
   const [syncAllLoading, setSyncAllLoading] = useState(false);
   const [candlePanelHeadline, setCandlePanelHeadline] = useState(null);
   const [chartCalendarEvents, setChartCalendarEvents] = useState([]);
-  const [lastGoodTopQuote, setLastGoodTopQuote] = useState({ price: null, changePercent: null });
+  const [lastTrustedQuote, setLastTrustedQuote] = useState(null);
   const [toggles, setToggles] = useState({
     labels: true,
     calendar: true,
@@ -79,22 +80,19 @@ const Dashboard = () => {
   }, [access.canLabels, access.canCalendar, access.canTargets]);
 
   useEffect(() => {
-    if (!selectedAsset || !toggles.calendar) return undefined;
+    if (!selectedAsset || !toggles.calendar) {
+      setChartCalendarEvents([]);
+      return undefined;
+    }
     let active = true;
-    const from = new Date();
-    const to = new Date(from.getTime() + 14 * 24 * 60 * 60 * 1000);
-    api.calendar
-      .getEvents({
-        from: from.toISOString(),
-        to: to.toISOString(),
-        country: 'US',
-        importance: 'HIGH',
-        limit: 20,
-      })
+    api.desk
+      .getCalendarForSymbol(selectedAsset)
       .then((res) => {
         if (active && res?.success) setChartCalendarEvents(res.data || []);
       })
-      .catch(() => {});
+      .catch(() => {
+        if (active) setChartCalendarEvents([]);
+      });
     return () => {
       active = false;
     };
@@ -115,11 +113,16 @@ const Dashboard = () => {
     reloadNews,
   } = useTerminalRealtime(selectedAsset);
 
-  const showStatusBar = true;
+  const showStatusBar = false;
   const statusCompact = !fetchError && !newsError && socketLive;
 
   const dismissWelcome = () => setSearchParams({}, { replace: true });
   const loadMarketData = reloadMarket;
+
+  useEffect(() => {
+    const sym = searchParams.get('symbol');
+    if (sym) setSelectedAsset(String(sym).toUpperCase());
+  }, [searchParams]);
 
   useEffect(() => {
     let active = true;
@@ -149,25 +152,74 @@ const Dashboard = () => {
     };
   }, []);
 
+  useEffect(() => {
+    setLastTrustedQuote(null);
+  }, [selectedAsset]);
+
   const selectedPrice =
     prices[selectedAsset] ||
     prices[`C:${selectedAsset}`] ||
     prices[selectedAsset?.replace('/', '')];
 
+  const liveTapePatchPrice =
+    selectedPrice?.source === 'tradingview' && !selectedPrice?.synthetic && Number(selectedPrice?.price) > 0
+      ? Number(selectedPrice.price)
+      : lastTrustedQuote?.source === 'tradingview' && Number(lastTrustedQuote?.price) > 0
+        ? Number(lastTrustedQuote.price)
+        : null;
+
   const { bars: chartBars, isLiveTape, meta: chartHistoryMeta } = useChartHistory(
     selectedAsset,
     chartConfig.interval,
     chartConfig.period,
-    null,
+    liveTapePatchPrice,
   );
 
   const analysisState = useAssetAnalysis(
     selectedAsset,
     chartConfig.interval,
     chartConfig.period,
-    selectedPrice?.price,
+    liveTapePatchPrice,
   );
   const refreshAnalysis = analysisState.refresh;
+
+  const sovereignQuote = useMemo(
+    () =>
+      resolveSovereignHeaderQuote({
+        symbol: selectedAsset,
+        priceData: selectedPrice,
+        lastTrustedQuote,
+        historyBars: chartBars,
+        historySynthetic: chartHistoryMeta.synthetic,
+        dataQuality: analysisState.meta?.dataQuality,
+      }),
+    [
+      selectedAsset,
+      selectedPrice,
+      lastTrustedQuote,
+      chartBars,
+      chartHistoryMeta.synthetic,
+      analysisState.meta?.dataQuality,
+    ],
+  );
+
+  useEffect(() => {
+    if (sovereignQuote.state !== 'live' || sovereignQuote.source !== 'tradingview') return;
+    if (!sovereignQuote.showPrice || !Number.isFinite(sovereignQuote.price)) return;
+    setLastTrustedQuote({
+      price: sovereignQuote.price,
+      changePercent: sovereignQuote.changePercent,
+      source: sovereignQuote.source,
+      updatedAt: selectedPrice?.updatedAt || new Date().toISOString(),
+    });
+  }, [
+    sovereignQuote.state,
+    sovereignQuote.source,
+    sovereignQuote.price,
+    sovereignQuote.changePercent,
+    sovereignQuote.showPrice,
+    selectedPrice?.updatedAt,
+  ]);
 
   const displayQuote = resolveMarketQuote({
     priceData: selectedPrice,
@@ -175,26 +227,6 @@ const Dashboard = () => {
     levelsLast: analysisState.technical?.modules?.levels?.last,
     historyBars: chartBars,
   });
-
-  const canonicalQuote = useMemo(() => {
-    const livePrice = Number(selectedPrice?.price);
-    const liveChangePercent = Number(selectedPrice?.changePercent);
-    const hasLivePrice = Number.isFinite(livePrice) && livePrice > 0 && !selectedPrice?.synthetic;
-    const safeLiveChangePercent =
-      Number.isFinite(liveChangePercent) &&
-      Math.abs(liveChangePercent) <= 95 &&
-      !(livePrice > 0 && Math.abs(liveChangePercent) === 100)
-        ? liveChangePercent
-        : null;
-    const fallbackChangePercent = Number(displayQuote.changePercent || 0);
-    return {
-      price: hasLivePrice ? livePrice : displayQuote.price,
-      changePercent: hasLivePrice
-        ? (safeLiveChangePercent ?? fallbackChangePercent)
-        : fallbackChangePercent,
-      isLive: hasLivePrice,
-    };
-  }, [selectedPrice, displayQuote]);
 
   const ms = analysisState.technical?.modules?.marketStructure;
   const swingTrend = ms?.htf?.trend;
@@ -211,40 +243,12 @@ const Dashboard = () => {
     return `${selectedAsset} — live desk`;
   }, [headlineNews, brief, selectedAsset]);
 
-  const price = canonicalQuote.price ?? selectedPrice?.price;
-  const changePercent = canonicalQuote.changePercent ?? selectedPrice?.changePercent ?? 0;
+  const syncedPrice = sovereignQuote.showPrice ? sovereignQuote.price : null;
+  const syncedChangePercent = sovereignQuote.showPrice ? sovereignQuote.changePercent : null;
+  const changeAbs = sovereignQuote.showPrice ? sovereignQuote.changeAbs : null;
+  const changePercent = syncedChangePercent ?? 0;
+  const price = syncedPrice ?? displayQuote.price;
   const chartLastClose = Number(chartBars[chartBars.length - 1]?.close);
-  const candidatePrice = Number(price);
-  const candidateChangePercent = Number(changePercent);
-  const hasValidCandidatePrice = Number.isFinite(candidatePrice) && candidatePrice > 0;
-  const hasValidCandidateChange =
-    Number.isFinite(candidateChangePercent) && Math.abs(candidateChangePercent) <= 95;
-
-  useEffect(() => {
-    if (!hasValidCandidatePrice) return;
-    setLastGoodTopQuote((prev) => {
-      if (
-        prev.price === candidatePrice &&
-        (hasValidCandidateChange ? prev.changePercent === candidateChangePercent : true)
-      ) {
-        return prev;
-      }
-      return {
-        price: candidatePrice,
-        changePercent: hasValidCandidateChange ? candidateChangePercent : prev.changePercent,
-      };
-    });
-  }, [candidatePrice, candidateChangePercent, hasValidCandidatePrice, hasValidCandidateChange]);
-
-  const syncedPrice = hasValidCandidatePrice ? candidatePrice : lastGoodTopQuote.price;
-  const syncedChangePercent = hasValidCandidateChange
-    ? candidateChangePercent
-    : (lastGoodTopQuote.changePercent ?? 0);
-
-  const changeAbs =
-    syncedPrice != null && syncedChangePercent != null
-      ? (Number(syncedPrice) * Number(syncedChangePercent)) / 100
-      : null;
 
   const support = lv?.support ?? (syncedPrice ? Number(syncedPrice) * 0.988 : null);
   const resistance = lv?.resistance ?? (syncedPrice ? Number(syncedPrice) * 1.01 : null);
@@ -276,6 +280,10 @@ const Dashboard = () => {
       interval: chartConfig.interval,
       period: chartConfig.period,
       timeframe_context: displayAnalysisState.technical?.timeframeContext,
+      data_quality: chartHistoryMeta?.synthetic ? 'model' : analysisState.meta?.dataQuality || 'live',
+      is_live_tape:
+        sovereignQuote.state === 'live' ||
+        Boolean(selectedPrice?.source === 'tradingview' && Number(selectedPrice?.price) > 0),
     }),
     [
       selectedAsset,
@@ -287,7 +295,22 @@ const Dashboard = () => {
       resistance,
       changePercent,
       chartConfig.interval,
+      chartHistoryMeta?.synthetic,
+      analysisState.meta?.dataQuality,
+      selectedPrice,
+      sovereignQuote.state,
+      isLiveTape,
     ],
+  );
+
+  const mappedCalendarAnnotations = useMemo(
+    () =>
+      mapCalendarToChartAnnotations(
+        chartCalendarEvents,
+        chartBars,
+        chartConfig.interval,
+      ),
+    [chartCalendarEvents, chartBars, chartConfig.interval],
   );
 
   const chartAnnotations = useMemo(() => {
@@ -305,29 +328,39 @@ const Dashboard = () => {
       if (!pool.some((p) => p.title === n.title)) pool.push(n);
     });
     if (!pool.length) return [];
-    const positions = [
-      { left: 24, top: 28 },
-      { left: 42, top: 48 },
-      { left: 58, top: 35 },
-      { left: 72, top: 55 },
-      { left: 82, top: 40 },
-    ];
-    return pool.slice(0, 5).map((item, i) => {
-      const pos = positions[i % positions.length];
+
+    const layout = computeBarLayout(chartBars);
+    const range = computeChartPriceRange(chartBars);
+    if (!layout?.columns?.length) return [];
+
+    const fallback = pool.slice(0, 8).map((item, i) => {
+      const barIdx = Math.min(
+        layout.columns.length - 1,
+        Math.floor(((i + 1) / (Math.min(pool.length, 8) + 1)) * layout.columns.length),
+      );
+      const col = layout.columns[barIdx];
+      const bar = col.bar;
+      const t = new Date(item.publishedAt || item.time).getTime();
+      const bullish = Number(bar.close) >= Number(bar.open);
+      const side = bullish ? 'above' : 'below';
+      const anchorX = col.leftPct;
+      const anchorY = priceToYPercent(bullish ? bar.high : bar.low, range.min, range.max);
       return {
-        id: `news-${i}-${item.title?.slice(0, 12)}`,
-        left: pos.left,
-        top: pos.top,
-        text: item.title?.length > 90 ? `${item.title.slice(0, 87)}…` : item.title,
-        sub: new Date(item.publishedAt || item.time).toLocaleString(undefined, {
-          month: 'short',
-          day: 'numeric',
-          hour: 'numeric',
-          minute: '2-digit',
-        }),
+        id: `news-fb-${i}-${item.title?.slice(0, 12)}`,
+        anchorX,
+        anchorY,
+        labelX: Math.min(86, anchorX + 10),
+        labelY: side === 'above' ? Math.max(8, anchorY - 16) : Math.min(90, anchorY + 16),
+        side,
+        left: anchorX,
+        top: anchorY,
+        text: item.title?.length > 140 ? `${item.title.slice(0, 137)}…` : item.title,
+        sub: formatChartLabelMeta(t),
         item,
+        bar,
       };
     });
+    return distributeNewsLabelFloats(fallback, 11);
   }, [headlineNews, selectedNews, chartBars, chartConfig.interval, selectedAsset]);
 
   const chartLevels = useMemo(() => {
@@ -484,13 +517,17 @@ const Dashboard = () => {
     return () => clearInterval(id);
   }, [refreshAnalysis, chartConfig.interval, selectedAsset]);
 
-  const chartIsModel = !selectedPrice?.price && displayQuote.isModel;
-  const chartIsLive = canonicalQuote.isLive && isLiveTape;
+  const chartIsModel = !sovereignQuote.showPrice && displayQuote.isModel;
+  const chartIsLive = sovereignQuote.state === 'live' && sovereignQuote.source === 'tradingview';
+  const overlayPrice = syncedPrice;
   const quoteDriftPct =
-    Number.isFinite(chartLastClose) && Number.isFinite(Number(canonicalQuote.price)) && Number(canonicalQuote.price) > 0
-      ? (Math.abs(chartLastClose - Number(canonicalQuote.price)) / Number(canonicalQuote.price)) * 100
+    Number.isFinite(chartLastClose) &&
+    Number.isFinite(Number(overlayPrice)) &&
+    Number(overlayPrice) > 0
+      ? (Math.abs(chartLastClose - Number(overlayPrice)) / Number(overlayPrice)) * 100
       : null;
-  const decisionUnsafe = !canonicalQuote.isLive || (quoteDriftPct != null && quoteDriftPct > 0.12);
+  const decisionUnsafe =
+    sovereignQuote.state !== 'live' || (quoteDriftPct != null && quoteDriftPct > 12);
 
   const handleCalendarEventInsight = useCallback(() => {
     setDeskTab('calendar');
@@ -528,7 +565,7 @@ const Dashboard = () => {
       {showWelcome && (
         <div className="mrkt-welcome mrkt-terminal__banner shrink-0">
           <div className="flex items-center gap-2 min-w-0">
-            <Sparkles size={16} className="text-[#8b5cf6] shrink-0" />
+            <Sparkles size={16} className="text-[var(--accent,#22d3ee)] shrink-0" />
             <p className="text-xs text-white font-semibold">
               {checkoutSuccess ? 'Welcome — your plan is active' : 'Your desk is ready'}
             </p>
@@ -547,18 +584,18 @@ const Dashboard = () => {
         {!headerCompact && (
         <MrktTerminalHeader
           headline={headline}
+          symbol={selectedAsset}
           price={syncedPrice}
           changeAbs={changeAbs}
           changePercent={syncedChangePercent}
+          isLive={chartIsLive}
+          tapeState={sovereignQuote.state}
+          priceSource={sovereignQuote.source || selectedPrice?.source || priceSource}
           swingTrend={swingTrend}
           dayTrend={dayTrend}
-          symbol={selectedAsset}
           chartInterval={chartConfig.interval}
           chartPeriod={chartConfig.period}
           timeframe={analysisState.timeframe}
-          isLive={chartIsLive}
-          hideTopPrice={hideTopPrice}
-          topPriceReason="TradingView price is authoritative on chart axis"
         />
       )}
 
@@ -583,9 +620,6 @@ const Dashboard = () => {
       {headerCompact && (
         <div className="mrkt-terminal__header-compact">
           <p className="mrkt-terminal__header-compact-headline">{headline}</p>
-          <span className="mrkt-terminal__header-compact-price">
-            {hideTopPrice ? 'TradingView price on chart axis' : formatPrice(price, selectedAsset)}
-          </span>
           <button type="button" className="mrkt-desk-controls__btn" onClick={toggleHeaderCompact}>
             Show full header
           </button>
@@ -616,15 +650,22 @@ const Dashboard = () => {
                 onToggleNews: toggleNewsOpen,
                 onToggleHeader: toggleHeaderCompact,
               }}
+              status={{
+                socketLive,
+                lastPriceSync,
+                lastNewsSync,
+                chartLive:
+                  sovereignQuote.state === 'live' ||
+                  Boolean(selectedPrice?.source === 'tradingview' && Number(selectedPrice?.price) > 0),
+                quoteDriftPct,
+                onRefresh: handleSyncAll,
+                refreshing: syncAllLoading || deskLoading,
+              }}
             />
 
-            <div
-              className={`mrkt-chart-main ${candlePanelHeadline ? 'mrkt-chart-main--with-drawer' : ''}`}
-            >
+            <div className="mrkt-chart-main">
               <div className="mrkt-chart-workspace">
-              <div
-                className={`mrkt-chart-stage ${candlePanelHeadline ? 'mrkt-chart-stage--narrow' : ''}`}
-              >
+              <div className="mrkt-chart-stage">
                 <div className="dash-chart-zone dash-chart-zone--analysis-tap">
                   {selectedAsset ? (
                     <>
@@ -638,22 +679,22 @@ const Dashboard = () => {
                         key={`${selectedAsset}-${chartConfig.interval}`}
                         symbol={selectedAsset}
                         interval={chartConfig.interval}
-                        levels={chartLevels}
+                        levels={[]}
                         fill
                         interactive
-                        modelMode={displayQuote.isModel}
-                        quotePrice={displayQuote.price}
+                        modelMode={false}
+                        quotePrice={liveTapePatchPrice}
                       />
                       <MrktChartOverlays
                         showLabels={toggles.labels && access.canLabels}
                         showTargets={toggles.targets && access.canTargets}
                         showCalendarEvents={toggles.calendar && access.canCalendar}
-                        price={syncedPrice}
+                        price={overlayPrice}
                         support={support ?? price}
                         resistance={resistance ?? price}
                         symbol={selectedAsset}
                         annotations={chartAnnotations}
-                        calendarEvents={chartCalendarEvents}
+                        calendarEvents={mappedCalendarAnnotations}
                         chartBars={chartBars}
                         chartInterval={chartConfig.interval}
                         newsPool={headlineNews}
@@ -663,7 +704,7 @@ const Dashboard = () => {
                         onChartTap={handleChartTap}
                         candleAnalysisOpen={Boolean(candlePanelHeadline)}
                       />
-                      {chartHistoryMeta.synthetic && chartBars.length >= 2 && (
+                      {chartHistoryMeta.synthetic && chartBars.length >= 2 && !chartIsLive && (
                         <div className="mrkt-chart-data-badge mrkt-chart-data-badge--history" role="status">
                           History: {chartHistoryMeta.source} — last sync{' '}
                           {chartHistoryMeta.asOf
@@ -671,7 +712,7 @@ const Dashboard = () => {
                             : '—'}
                         </div>
                       )}
-                      {chartIsModel && (
+                      {chartIsModel && !chartIsLive && (
                         <div className="mrkt-chart-data-badge" role="status">
                           Awaiting live quote — showing model structure until tape connects
                         </div>
@@ -688,18 +729,6 @@ const Dashboard = () => {
                 </div>
               </div>
 
-              {candlePanelHeadline && (
-                <MrktCandleAnalysisPanel
-                  symbol={selectedAsset}
-                  headline={candlePanelHeadline}
-                  marketContext={marketContext}
-                  relatedNewsPool={headlineNews}
-                  prices={prices}
-                  canAiInsight={access.canNewsAi}
-                  onClose={() => setCandlePanelHeadline(null)}
-                  onSelectAsset={handleSelectAsset}
-                />
-              )}
               </div>
             </div>
 
@@ -732,6 +761,20 @@ const Dashboard = () => {
             </SectionErrorBoundary>
           </div>
         </div>
+
+        {candlePanelHeadline && (
+          <MrktCandleAnalysisPanel
+            className="mrkt-candle-drawer--overlay"
+            symbol={selectedAsset}
+            headline={candlePanelHeadline}
+            marketContext={marketContext}
+            relatedNewsPool={headlineNews}
+            prices={prices}
+            canAiInsight={access.canNewsAi}
+            onClose={() => setCandlePanelHeadline(null)}
+            onSelectAsset={handleSelectAsset}
+          />
+        )}
 
         {newsOpen && (
           <SectionErrorBoundary

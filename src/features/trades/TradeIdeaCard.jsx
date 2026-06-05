@@ -1,305 +1,172 @@
-import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
-import { Clock, X, Zap, FlaskConical } from "lucide-react";
-import { api } from "../../services/api/api.js";
-import TradeChart from "../../components/TradeChart";
-import {
-  formatConfluence10,
-  formatTriggerBadge,
-  gradeLabel,
-  GRADE_STYLES,
-} from "../../utils/ideaDisplay.js";
-import { formatIntervalLabel } from "../../utils/chartConfig.js";
+import React, { useMemo } from 'react';
+import { Link } from 'react-router-dom';
+import { FlaskConical, LineChart, ArrowRight, X } from 'lucide-react';
+import TradeChart from '../../components/TradeChart.jsx';
+import { formatTriggerBadge } from '../../utils/ideaDisplay.js';
 
-const TradeIdeaCard = ({ idea, onClick, isOpenTrade, onCloseTrade, closing, isWatchlist }) => {
+function fmtPrice(val, asset) {
+  const n = parseFloat(val);
+  if (Number.isNaN(n)) return '—';
+  if (/USD/.test(String(asset)) && n > 50) return n.toFixed(2);
+  if (n >= 1000) return n.toFixed(2);
+  if (n >= 10) return n.toFixed(4);
+  return n.toFixed(5);
+}
+
+const TradeIdeaCard = ({
+  idea,
+  onClick,
+  isOpenTrade,
+  onCloseTrade,
+  closing,
+  isWatchlist,
+  livePrice,
+}) => {
   if (!idea) return null;
 
-  const [currentMarketPrice, setCurrentMarketPrice] = useState(null);
-
-  useEffect(() => {
-    let active = true;
-    const symbol = idea.asset || idea.symbol;
-    if (!symbol) return undefined;
-
-    api.market
-      .getAllPrices()
-      .then((res) => {
-        if (active && res?.success && res.data?.[symbol]) {
-          setCurrentMarketPrice(Number(res.data[symbol].price));
-        }
-      })
-      .catch(() => {});
-    return () => {
-      active = false;
-    };
-  }, [idea]);
-
-  const asset = idea.asset || idea.symbol || "UNK";
-  const isCrypto =
-    idea.assetClass === "crypto" ||
-    /BTC|ETH|SOL|BNB|XRP|DOGE|ADA|AVAX|LINK|DOT|LTC|ATOM/i.test(asset);
-  const direction = idea.direction || (idea.side ? idea.side.toUpperCase() : "FLAT");
-  const confidence = Number(idea.confidence || idea.winProbability || 0);
-  const rationale = idea.thesis || idea.rationale || idea.analysis || "Technical structure supports this setup.";
-  const grade = idea.grade || "B";
+  const asset = idea.asset || idea.symbol || 'UNK';
+  const direction = idea.direction || (idea.side ? idea.side.toUpperCase() : 'FLAT');
+  const confidence = Math.round(Number(idea.confidence || idea.winProbability || 0));
+  const isLong =
+    direction.toUpperCase().includes('LONG') || direction.toUpperCase().includes('BUY');
   const isFocus = idea.is_todays_focus;
+  const triggerInterval = idea.trigger_interval || '15m';
 
   const rawEntry = idea.entry_price ?? idea.entryPrice ?? idea.price ?? idea.suggested_entry;
-  const resolvedEntry =
-    rawEntry !== undefined && rawEntry !== null && !Number.isNaN(rawEntry)
-      ? parseFloat(rawEntry)
-      : currentMarketPrice;
+  const entry =
+    rawEntry != null && !Number.isNaN(Number(rawEntry))
+      ? Number(rawEntry)
+      : livePrice != null
+        ? Number(livePrice)
+        : null;
+  const target = idea.take_profit ?? idea.takeProfit ?? idea.target;
+  const stop = idea.stop_loss ?? idea.stopLoss ?? idea.stop;
 
-  const entryDisplay = resolvedEntry ? resolvedEntry : "-";
-  const target = idea.take_profit ?? idea.takeProfit ?? idea.target ?? "-";
-  const stop = idea.stop_loss ?? idea.stopLoss ?? idea.stop ?? "-";
-
-  const rawDate = idea.created_at ?? idea.createdAt ?? idea.timestamp ?? idea.date;
-  const created = rawDate ? rawDate : new Date().toISOString();
-
-  const triggerInterval = idea.trigger_interval || "15m";
-  const htfTrend = idea.htf_trend || idea.htf?.trend;
-  const ltfTrend = idea.ltf_trend || idea.ltf?.trend;
-  const alignment = idea.alignment;
-
-  const isLong =
-    direction.toUpperCase().includes("LONG") || direction.toUpperCase().includes("BUY");
-  const theme = isLong
-    ? {
-        border: "border-emerald-500/20",
-        bg: "bg-emerald-500/5",
-        badge: "bg-emerald-500/10 border-emerald-500 text-emerald-500",
-      }
-    : {
-        border: "border-red-500/20",
-        bg: "bg-red-500/5",
-        badge: "bg-red-500/10 border-red-500 text-red-500",
-      };
-
-  const formatDate = (iso) => {
-    try {
-      const date = new Date(iso);
-      if (Number.isNaN(date.getTime())) return "Just Now";
-      return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-    } catch {
-      return "--:--";
-    }
-  };
-
-  const calculateRR = () => {
-    const e = parseFloat(resolvedEntry);
+  const rr = useMemo(() => {
+    const e = entry;
     const t = parseFloat(target);
     const s = parseFloat(stop);
-    if (Number.isNaN(e) || Number.isNaN(t) || Number.isNaN(s)) return "N/A";
-    let risk = 0;
-    let reward = 0;
-    if (isLong) {
-      risk = e - s;
-      reward = t - e;
-    } else {
-      risk = s - e;
-      reward = e - t;
-    }
-    if (risk <= 0.00001) return "N/A";
-    return `1:${(reward / risk).toFixed(2)}`;
-  };
-
-  const displayNum = (val) => {
-    const num = parseFloat(val);
-    return Number.isNaN(num) ? val : num.toFixed(5);
-  };
-
-  const trendChipClass = (t) => {
-    if (!t) return "text-text-muted";
-    if (String(t).includes("BULL")) return "text-emerald-400";
-    if (String(t).includes("BEAR")) return "text-red-400";
-    return "text-yellow-500";
-  };
+    if (!Number.isFinite(e) || Number.isNaN(t) || Number.isNaN(s)) return null;
+    const risk = isLong ? e - s : s - e;
+    const reward = isLong ? t - e : e - t;
+    if (risk <= 0.00001) return null;
+    return (reward / risk).toFixed(1);
+  }, [entry, target, stop, isLong]);
 
   const backtestPreset = {
     symbol: asset,
     interval: triggerInterval,
-    period: "1M",
-    minConfidence: Math.max(65, Math.round(confidence)),
+    minConfidence: Math.max(50, confidence),
     minRR: 1.5,
   };
 
   return (
-    <div
+    <article
+      className={`idea-card ${isLong ? 'idea-card--long' : 'idea-card--short'} ${isFocus ? 'idea-card--focus' : ''}`}
       onClick={onClick}
+      onKeyDown={(e) => e.key === 'Enter' && onClick?.()}
       role="button"
       tabIndex={0}
-      onKeyDown={(e) => e.key === "Enter" && onClick?.()}
-      className={`card-modern border ${theme.border} p-0 cursor-pointer group flex flex-col relative overflow-hidden h-full ${isFocus ? "ring-2 ring-primary/50 shadow-lg shadow-primary/10" : ""}`}
     >
-      <div className="signal-accent-top" />
-      {isFocus && (
-        <span className="absolute top-2 left-2 z-10 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-primary/20 text-primary border border-primary/40">
-          Today&apos;s focus
-        </span>
-      )}
-      {!isFocus && isWatchlist && (
-        <span className="absolute top-2 left-2 z-10 text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-300 border border-amber-500/35">
-          Watchlist
-        </span>
-      )}
-      <div className="p-5 pb-2">
-        <div className="absolute top-0 right-0 p-4 text-right z-10">
-          <div className="flex flex-col items-end">
-            <span
-              className={`text-2xl font-bold font-mono ${confidence > 80 ? "text-primary" : "text-text-muted"}`}
-            >
-              {Math.round(confidence)}%
-            </span>
-            <span className="text-[10px] uppercase text-text-muted font-bold tracking-wider">
-              Confidence
-            </span>
-          </div>
-        </div>
-
-        <div className="mb-3 pr-16">
-          <div className="flex flex-wrap items-center gap-2 mb-1">
-            <span className="font-bold text-xl text-text-main">{asset}</span>
-            {isCrypto && (
-              <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded bg-amber-500/15 text-amber-400 border border-amber-500/30">
-                Crypto
-              </span>
-            )}
-            <span
-              className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded border ${theme.badge}`}
-            >
+      <header className="idea-card__head">
+        <div>
+          <div className="idea-card__symbol">{asset}</div>
+          <div className="idea-card__badges">
+            <span className={`idea-card__badge ${isLong ? 'idea-card__badge--long' : 'idea-card__badge--short'}`}>
               {direction}
             </span>
-            <span className={GRADE_STYLES[grade] || GRADE_STYLES.WATCH}>
-              {gradeLabel(grade)}
-            </span>
-          </div>
-          <div className="flex flex-wrap items-center gap-2 mt-2">
-            <span className="idea-trigger-badge">
-              <Zap size={10} className="inline -mt-px mr-0.5" />
-              {formatTriggerBadge(idea)}
-            </span>
-            <span className="text-[10px] text-text-muted flex items-center gap-1">
-              <Clock size={10} /> {formatDate(created)}
-            </span>
-          </div>
-        </div>
-
-        {(htfTrend || ltfTrend) && (
-          <div className="flex flex-wrap gap-1.5 mb-2 text-[9px] font-mono font-bold uppercase">
-            <span className="px-1.5 py-0.5 rounded border border-border/80 bg-background/50">
-              Chart {formatIntervalLabel(triggerInterval)}{" "}
-              <span className={trendChipClass(ltfTrend)}>{ltfTrend || "—"}</span>
-            </span>
-            {htfTrend && (
-              <span className="px-1.5 py-0.5 rounded border border-border/80 bg-background/50">
-                Structure <span className={trendChipClass(htfTrend)}>{htfTrend}</span>
-              </span>
-            )}
-            {alignment === "CONFLICTING" && (
-              <span className="px-1.5 py-0.5 rounded border border-amber-500/40 text-amber-400 bg-amber-500/10">
-                Divergence
-              </span>
+            {isFocus && <span className="idea-card__badge idea-card__badge--focus">Focus</span>}
+            {!isFocus && isWatchlist && (
+              <span className="idea-card__badge idea-card__badge--focus">Watch</span>
             )}
           </div>
-        )}
-
-        <div className="h-32 w-full mb-4 border border-border/50 rounded-lg overflow-hidden relative bg-background/30">
-          <TradeChart
-            symbol={asset}
-            interval={triggerInterval}
-            height={128}
-            interactive={false}
-            compact
-            className="!min-h-[128px]"
-          />
         </div>
-
-        <div className="grid grid-cols-3 gap-2 mb-3">
-          <div className="bg-background/60 p-1.5 rounded-lg border border-border/80 text-center relative">
-            <span className="text-[9px] text-text-muted uppercase block mb-0.5">Entry</span>
-            <span className="font-mono font-bold text-xs text-text-main">
-              {!rawEntry && currentMarketPrice && (
-                <span
-                  className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full"
-                  title="Market price"
-                />
-              )}
-              {displayNum(entryDisplay)}
-            </span>
-          </div>
-          <div className="bg-background/60 p-1.5 rounded-lg border border-border/80 text-center">
-            <span className="text-[9px] text-text-muted uppercase block mb-0.5">Target</span>
-            <span className="font-mono font-bold text-xs text-emerald-500">{displayNum(target)}</span>
-          </div>
-          <div className="bg-background/60 p-1.5 rounded-lg border border-border/80 text-center">
-            <span className="text-[9px] text-text-muted uppercase block mb-0.5">Stop Loss</span>
-            <span className="font-mono font-bold text-xs text-red-500">{displayNum(stop)}</span>
-          </div>
+        <div className="idea-card__conf">
+          <div className="idea-card__conf-val">{confidence}%</div>
+          <div className="idea-card__conf-label">Conf.</div>
         </div>
+      </header>
 
-        {idea.event_gate?.nextEvent && (
-          <p className="text-[10px] text-amber-300/90 mb-2 border border-amber-500/25 rounded px-2 py-1">
-            Macro: {idea.event_gate.nextEvent.name} in {idea.event_gate.minutesUntil}m
-          </p>
-        )}
-        {idea.invalidation_text && (
-          <p className="text-[10px] text-red-400/90 mb-1 line-clamp-2">{idea.invalidation_text}</p>
-        )}
-        {idea.time_stop && (
-          <p className="text-[10px] text-text-muted mb-2 line-clamp-1">{idea.time_stop}</p>
-        )}
-        <p className="text-xs text-text-muted line-clamp-3 leading-relaxed mb-2">
-          <span className="font-bold text-text-main opacity-50 mr-1">Thesis:</span>
-          {rationale}
-        </p>
+      <div className="idea-card__chart" onClick={(e) => e.stopPropagation()}>
+        <TradeChart
+          symbol={asset}
+          interval={triggerInterval}
+          height={120}
+          interactive={false}
+          compact
+          quotePrice={livePrice}
+        />
       </div>
 
-      <div
-        className={`mt-auto pt-2 border-t border-border flex justify-between items-center gap-2 ${theme.bg} px-5 py-2`}
-      >
-        {isOpenTrade ? (
-          <>
-            <span className="text-[10px] font-bold uppercase text-emerald-500">Open position</span>
+      <div className="idea-card__levels">
+        <div className="idea-card__level">
+          <span className="idea-card__level-k">Entry</span>
+          <span className="idea-card__level-v">{entry != null ? fmtPrice(entry, asset) : '—'}</span>
+        </div>
+        <div className="idea-card__level">
+          <span className="idea-card__level-k">Target</span>
+          <span className="idea-card__level-v idea-card__level-v--tp">
+            {fmtPrice(target, asset)}
+          </span>
+        </div>
+        <div className="idea-card__level">
+          <span className="idea-card__level-k">Stop</span>
+          <span className="idea-card__level-v idea-card__level-v--sl">{fmtPrice(stop, asset)}</span>
+        </div>
+      </div>
+
+      <footer className="idea-card__foot">
+        <span className="idea-card__meta">
+          {formatTriggerBadge(idea)}
+          {rr ? ` · ${rr}R` : ''}
+        </span>
+        <div className="idea-card__actions">
+          {isOpenTrade ? (
             <button
               type="button"
+              className="idea-card__close"
               disabled={closing}
               onClick={(e) => {
                 e.stopPropagation();
                 onCloseTrade?.(idea);
               }}
-              className="px-3 py-1 text-[10px] font-bold uppercase rounded bg-red-500/90 hover:bg-red-600 text-white disabled:opacity-50 flex items-center gap-1"
             >
-              <X size={12} /> {closing ? "Closing…" : "Close"}
+              <X size={11} aria-hidden /> {closing ? '…' : 'Close'}
             </button>
-          </>
-        ) : (
-          <>
-            <div className="flex flex-col">
-              <span className="text-[9px] text-text-muted uppercase">R:R</span>
-              <span className="font-bold font-mono text-xs text-text-main">{calculateRR()}</span>
-            </div>
-            <div className="flex items-center gap-3">
-              <Link
-                to="/dashboard/backtest"
-                state={{ preset: backtestPreset }}
-                onClick={(e) => e.stopPropagation()}
-                className="text-[9px] font-bold uppercase text-primary hover:underline flex items-center gap-1"
-                title="Backtest this setup"
+          ) : (
+            <>
+              <button
+                type="button"
+                className="idea-card__action idea-card__action--primary"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onClick?.();
+                }}
               >
-                <FlaskConical size={11} /> Backtest
+                Review <ArrowRight size={11} aria-hidden />
+              </button>
+              <Link
+                to="/dashboard/backtest?tab=strategy"
+                state={{ preset: backtestPreset }}
+                className="idea-card__action"
+                onClick={(e) => e.stopPropagation()}
+                title="Strategy backtest"
+              >
+                <FlaskConical size={11} aria-hidden /> Test
               </Link>
-              <div className="flex flex-col items-end">
-                <span className="text-[9px] text-text-muted uppercase">Confluence</span>
-                <span className="font-bold text-xs text-primary" title="Score out of 10">
-                  {formatConfluence10(idea)}
-                </span>
-              </div>
-            </div>
-          </>
-        )}
-      </div>
-    </div>
+              <Link
+                to={`/dashboard?symbol=${encodeURIComponent(asset)}`}
+                className="idea-card__action"
+                onClick={(e) => e.stopPropagation()}
+                title="Open terminal chart"
+              >
+                <LineChart size={11} aria-hidden /> Chart
+              </Link>
+            </>
+          )}
+        </div>
+      </footer>
+    </article>
   );
 };
 

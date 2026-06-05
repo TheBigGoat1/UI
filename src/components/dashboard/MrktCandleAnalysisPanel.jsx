@@ -5,28 +5,18 @@ import TradeChart from '../TradeChart.jsx';
 import MrktInfinityLoader from './MrktInfinityLoader.jsx';
 import InsidrNewsAnalysis from './InsidrNewsAnalysis.jsx';
 import { formatNewsTime } from '../../utils/newsAssets.js';
-import { impactLabel, COUNTRY_FLAGS } from '../../utils/deskBiasContent.js';
 import {
   cacheKeyForCandle,
   getCachedCandleAnalysis,
   setCachedCandleAnalysis,
 } from '../../utils/chartSessionCache.js';
+import { buildInstantCandlePreview } from '../../utils/instantCandlePreview.js';
+import { marketContextKey } from '../../utils/marketContextKey.js';
 
-import { formatMacroValue, formatPanelTimestamp, LABEL } from '../../utils/displayFormat.js';
-
-function impactBadgeClass(impact) {
-  const imp = impactLabel(impact);
-  if (imp.tone === 'high') return 'mrkt-candle-event__impact--high';
-  if (imp.tone === 'med') return 'mrkt-candle-event__impact--medium';
-  return 'mrkt-candle-event__impact--low';
-}
-
-function impactBadgeLabel(impact) {
-  const imp = impactLabel(impact);
-  if (imp.tone === 'high') return 'HIGH';
-  if (imp.tone === 'med') return 'MEDIUM';
-  return 'LOW';
-}
+import BrainClaudeBadge from '../brain/BrainClaudeBadge.jsx';
+import BrainCalendarEventRow from '../brain/BrainCalendarEventRow.jsx';
+import { useCalendarInsightToggle, calendarEventRowId } from '../../hooks/useCalendarInsightToggle.js';
+import { formatPanelTimestamp } from '../../utils/displayFormat.js';
 
 /** Right-side Candle Analysis drawer — MRKT home parity */
 const MrktCandleAnalysisPanel = ({
@@ -38,15 +28,19 @@ const MrktCandleAnalysisPanel = ({
   canAiInsight = true,
   onClose,
   onSelectAsset,
+  className = '',
 }) => {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
+  const [enhancing, setEnhancing] = useState(false);
   const [data, setData] = useState(null);
   const [error, setError] = useState('');
   const [insightArticle, setInsightArticle] = useState(null);
-  const [eventInsight, setEventInsight] = useState({ id: null, text: '' });
+  const { activeId: activeEventId, toggle: toggleEventInsight } = useCalendarInsightToggle();
 
   const title = headline?.title || headline?.text || 'Session move';
   const publishedAt = headline?.publishedAt || headline?.time || headline?.published_at;
+
+  const ctxKey = marketContextKey(marketContext);
 
   useEffect(() => {
     let active = true;
@@ -55,15 +49,23 @@ const MrktCandleAnalysisPanel = ({
     if (cached) {
       setData(cached);
       setLoading(false);
+      setEnhancing(false);
       setError('');
       return () => {
         active = false;
       };
     }
 
-    setLoading(true);
+    const instant = buildInstantCandlePreview({
+      symbol,
+      headline,
+      marketContext,
+      relatedNewsPool,
+    });
+    setData(instant);
+    setLoading(false);
+    setEnhancing(true);
     setError('');
-    setData(null);
 
     api.desk
       .candleAnalysis({
@@ -82,6 +84,7 @@ const MrktCandleAnalysisPanel = ({
           publishedAt: n.publishedAt || n.time,
           url: n.url || n.link,
         })),
+        bar: headline?.bar || null,
       })
       .then((res) => {
         if (!active) return;
@@ -96,13 +99,13 @@ const MrktCandleAnalysisPanel = ({
         if (active) setError(e.error || 'Could not load candle analysis.');
       })
       .finally(() => {
-        if (active) setLoading(false);
+        if (active) setEnhancing(false);
       });
 
     return () => {
       active = false;
     };
-  }, [symbol, title, publishedAt, marketContext, relatedNewsPool.length]);
+  }, [symbol, title, publishedAt, ctxKey, relatedNewsPool.length]);
 
   const relatedNews = useMemo(() => {
     const fromApi = data?.relatedNews;
@@ -120,27 +123,21 @@ const MrktCandleAnalysisPanel = ({
 
   const relatedEvents = data?.relatedEvents || [];
 
-  const requestEventInsight = async (event) => {
-    const id = event.id || `${event.event_name}-${event.event_time}`;
-    setEventInsight({ id, text: 'Generating desk read…' });
-    try {
-      const res = await api.desk.analyzeCalendarEvent(event, symbol);
-      setEventInsight({
-        id,
-        text: res?.data?.analysis || res?.data?.reply || 'No analysis returned.',
-      });
-    } catch (e) {
-      setEventInsight({ id, text: e.error || 'Calendar analysis failed.' });
-    }
-  };
-
   return (
-    <aside className="mrkt-candle-drawer" role="complementary" aria-labelledby="mrkt-candle-drawer-title">
+    <aside
+      className={`mrkt-candle-drawer ${className}`.trim()}
+      role="complementary"
+      aria-labelledby="mrkt-candle-drawer-title"
+    >
       <header className="mrkt-candle-drawer__head">
         <div>
-          <h2 id="mrkt-candle-drawer-title" className="mrkt-candle-drawer__title">
-            Candle Analysis — {symbol}
-          </h2>
+          <div className="mrkt-candle-drawer__title-row">
+            <Brain size={16} className="mrkt-candle-drawer__brain" aria-hidden />
+            <h2 id="mrkt-candle-drawer-title" className="mrkt-candle-drawer__title">
+              Candle Analysis — {symbol}
+            </h2>
+            <BrainClaudeBadge provider={data?.provider} compact />
+          </div>
           <p className="mrkt-candle-drawer__time">{formatPanelTimestamp(publishedAt)}</p>
         </div>
         <button type="button" className="mrkt-candle-drawer__close" onClick={onClose} aria-label="Close">
@@ -150,12 +147,17 @@ const MrktCandleAnalysisPanel = ({
 
       {loading ? (
         <div className="mrkt-candle-drawer__loading">
-          <MrktInfinityLoader label="Building candle read from headline, calendar & chart…" />
+          <MrktInfinityLoader label="Opening candle analysis…" />
         </div>
       ) : error ? (
         <p className="mrkt-candle-drawer__error">{error}</p>
       ) : (
         <div className="mrkt-candle-drawer__scroll custom-scrollbar">
+          {enhancing && (
+            <p className="mrkt-candle-drawer__enhancing" role="status">
+              Enhancing with live calendar &amp; Claude desk read…
+            </p>
+          )}
           <section className="mrkt-candle-section">
             <h3 className="mrkt-candle-section__title">What happened?</h3>
             <p className="mrkt-candle-section__summary">
@@ -284,45 +286,18 @@ const MrktCandleAnalysisPanel = ({
               {relatedEvents.length === 0 && (
                 <li className="mrkt-candle-news-empty">No calendar events near this candle — sync macro data.</li>
               )}
-              {relatedEvents.map((ev) => {
-                const country = String(ev.country || 'US').toUpperCase();
-                const name = ev.event_name || ev.event || 'Event';
-                const rowId = ev.id || `${name}-${ev.event_time}`;
-                const showInsight = eventInsight.id === rowId && eventInsight.text;
-                const analyzing = eventInsight.id === rowId && eventInsight.text === 'Generating desk read…';
-                return (
-                  <li key={rowId} className="mrkt-candle-event-row">
-                    <span className="mrkt-candle-event-row__flag" aria-hidden>
-                      {COUNTRY_FLAGS[country] || '🌐'}
-                    </span>
-                    <div className="mrkt-candle-event-row__body">
-                      <p className="mrkt-candle-event-row__name">{name}</p>
-                      <p className="mrkt-candle-event-row__vals">
-                        Actual: <strong>{formatMacroValue(ev.actual, 'actual')}</strong>
-                        {' | '}
-                        Forecast: <strong>{formatMacroValue(ev.forecast, 'forecast')}</strong>
-                      </p>
-                      {showInsight && <p className="mrkt-candle-event-row__insight">{eventInsight.text}</p>}
-                    </div>
-                    <span
-                      className={`mrkt-candle-event__impact ${impactBadgeClass(ev.importance || ev.impact)}`}
-                    >
-                      {impactBadgeLabel(ev.importance || ev.impact)}
-                    </span>
-                    {canAiInsight && (
-                      <button
-                        type="button"
-                        className="mrkt-candle-event-row__brain"
-                        disabled={analyzing}
-                        onClick={() => requestEventInsight(ev)}
-                        aria-label={`Analyze ${name}`}
-                      >
-                        <Brain size={16} />
-                      </button>
-                    )}
-                  </li>
-                );
-              })}
+              {relatedEvents.map((ev) => (
+                <BrainCalendarEventRow
+                  key={calendarEventRowId(ev) || ev.event_name}
+                  event={ev}
+                  symbol={symbol}
+                  prices={prices}
+                  canAiInsight={canAiInsight}
+                  activeId={activeEventId}
+                  onToggle={toggleEventInsight}
+                  onSelectAsset={onSelectAsset}
+                />
+              ))}
             </ul>
           </section>
 

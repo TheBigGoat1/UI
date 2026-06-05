@@ -14,6 +14,7 @@ const MrktChartInteractionLayer = ({
   newsPool = [],
   isLiveTape = true,
   onCandleOpen,
+  suppressHover = false,
 }) => {
   const wrapRef = useRef(null);
   const layerRef = useRef(null);
@@ -48,7 +49,7 @@ const MrktChartInteractionLayer = ({
   const handleWrapLeave = useCallback(
     (e) => {
       const next = e.relatedTarget;
-      if (next && wrapRef.current?.contains(next)) return;
+      if (next instanceof Node && wrapRef.current?.contains(next)) return;
       clearHoverSoon();
     },
     [clearHoverSoon],
@@ -135,7 +136,7 @@ const MrktChartInteractionLayer = ({
         onMouseMove={updateHoverFromEvent}
         onClick={handleClick}
       />
-      {activeCol && (
+      {activeCol && !suppressHover && (
         <div
           className="mrkt-chart-interaction__highlight"
           style={{
@@ -144,7 +145,7 @@ const MrktChartInteractionLayer = ({
           aria-hidden
         />
       )}
-      {read && hoverStyle && (
+      {read && hoverStyle && !suppressHover && (
         <MrktChartCandleHover
           read={read}
           style={hoverStyle}

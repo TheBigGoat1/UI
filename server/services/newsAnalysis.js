@@ -144,6 +144,7 @@ export function newsAnalysisFallback(
     analysis: built.analysis,
     assets: built.assets,
     provider: "deterministic",
+    aiEnabled: false,
     theme: built.theme,
     tone: built.tone,
   };
@@ -276,6 +277,7 @@ async function runNewsAnalysis({
         analysis: out.analysis,
         assets: out.assets,
         provider: "anthropic",
+        aiEnabled: true,
         model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
         market_snapshot: snapshot,
         claude_configured: true,
@@ -293,6 +295,7 @@ async function runNewsAnalysis({
         analysis: prose,
         assets: inferHeadlineAssets(title, symbols, asset, summary),
         provider: "anthropic",
+        aiEnabled: true,
         model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
         market_snapshot: snapshot,
         claude_configured: true,

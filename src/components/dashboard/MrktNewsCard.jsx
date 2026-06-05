@@ -26,6 +26,7 @@ const MrktNewsCard = ({
   onSelectAsset,
   onNewsActivate,
   marketContext,
+  wireHeadline = false,
 }) => {
   const [saved, setSaved] = useState(() => isBookmarked(item));
   const [aiOpen, setAiOpen] = useState(false);
@@ -127,7 +128,7 @@ const MrktNewsCard = ({
         </div>
 
         <h3 className={`mrkt-news__headline ${highlight ? 'mrkt-news__headline--featured' : ''}`}>
-          {formatNewsHeadline(title)}
+          {wireHeadline ? title : formatNewsHeadline(title)}
         </h3>
 
         {summary && <p className="mrkt-news__summary">{summary}</p>}

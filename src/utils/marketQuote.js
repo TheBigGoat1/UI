@@ -15,7 +15,8 @@ export function resolveMarketQuote({
   const modelFromAnalysis = isModelDataQuality(dataQuality);
   const modelFromPrice = Boolean(priceData?.synthetic);
   const hasLivePrice = Number.isFinite(Number(priceData?.price)) && !modelFromPrice;
-  const isModel = !hasLivePrice && (modelFromAnalysis || modelFromPrice);
+  const isTvQuote = priceData?.source === 'tradingview';
+  const isModel = !isTvQuote && !hasLivePrice && (modelFromAnalysis || modelFromPrice);
 
   const lastBar =
     historyBars.length > 0 ? Number(historyBars[historyBars.length - 1]?.close) : null;

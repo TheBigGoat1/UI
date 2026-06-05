@@ -2,9 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { AlertTriangle, RefreshCw, Server } from 'lucide-react';
 import { api } from '../../services/api/api.js';
 
-/**
- * Shown when the Express API is not reachable (port 3001 / dev proxy).
- */
+/** Shown when the Express API is not reachable (dev proxy or direct port). */
 const ApiStatusBar = ({ className = '' }) => {
   const [online, setOnline] = useState(true);
   const [staleApi, setStaleApi] = useState(false);
@@ -65,8 +63,9 @@ const ApiStatusBar = ({ className = '' }) => {
                 <code className="px-1.5 py-0.5 rounded bg-black/30 font-mono text-[11px]">
                   npm run dev:all
                 </code>
-                . Match <code className="font-mono text-[11px]">VITE_API_URL</code> in .env to the
-                port the API binds (often 3001 or 3003).
+                . Set <code className="font-mono text-[11px]">PORT</code> and{' '}
+                <code className="font-mono text-[11px]">VITE_API_URL</code> in .env to the same port
+                (default 3003).
               </>
             )}
           </p>

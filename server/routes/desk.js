@@ -52,8 +52,43 @@ router.get(
   optionalAuth,
   safeAsync(async (req, res) => {
     const symbol = String(req.query.symbol || "XAUUSD").toUpperCase();
-    const data = await getDeskIntelligenceBundle(symbol);
-    res.json({ success: true, data });
+    try {
+      const data = await getDeskIntelligenceBundle(symbol);
+      res.json({ success: true, data });
+    } catch (error) {
+      console.warn("[desk] intelligence degraded:", error.message);
+      res.json({
+        success: true,
+        data: {
+          asOf: new Date().toISOString(),
+          symbol,
+          capitalFlows: { asOf: new Date().toISOString(), flows: [], source: "awaiting_tape", live: false },
+          fedSeries: { series: [], latestRate: null, source: "unavailable" },
+          rateRows: { rows: [], source: "unavailable" },
+          scheduleRisk: {
+            asOf: new Date().toISOString(),
+            score: null,
+            level: null,
+            description: "Desk intelligence loading — retry shortly.",
+            events: [],
+            source: "unavailable",
+            unavailable: true,
+          },
+          sentiment: {
+            asOf: new Date().toISOString(),
+            score: 50,
+            label: "Balanced",
+            regimeLabel: "Mixed",
+            summary: "Desk snapshot unavailable.",
+            factors: [],
+            source: "fallback",
+          },
+          aiFallbackBias: null,
+          brief: { regime: {}, veteranLine: null, session: { label: "New York" } },
+          meta: { degraded: true, error: error.message },
+        },
+      });
+    }
   }),
 );
 
@@ -118,11 +153,13 @@ router.post(
     const headline = req.body.headline || req.body.article || {};
     const marketContext = req.body.marketContext || null;
     const relatedNewsPool = Array.isArray(req.body.relatedNews) ? req.body.relatedNews : [];
+    const clickedBar = req.body.bar || req.body.clickedBar || null;
     const data = await analyzeCandleMoment({
       symbol,
       headline,
       marketContext,
       relatedNewsPool,
+      clickedBar,
     });
     res.json({ success: true, data });
   }),

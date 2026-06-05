@@ -36,16 +36,14 @@
   background: var(--bg-deep, #050a14);
 }
 
-.tradingview-chart-mount__loader {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  background: rgba(5, 10, 20, 0.9);
+.tradingview-chart-mount--booting {
+  opacity: 0.35;
+}
+
+.tradingview-chart-mount__loader--thin {
+  background: transparent;
   pointer-events: none;
+  z-index: 5;
 }
 
 .ohlc-visual {
